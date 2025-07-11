@@ -15,7 +15,7 @@ contract StakeholderRegistry {
         string businessName;
         string businessLicense;
         string location;
-        string certificate;
+        string certifications;
         bool isActive;
         uint256 registeredAt;
         uint256 lastActivity;
@@ -66,7 +66,7 @@ contract StakeholderRegistry {
         string memory _location,
         string memory _certifications
     ) external onlyAdmin {
-        require(_stakeholder != address(0), "Invalid stakeholder address");
+        require(_stakeholderAddress != address(0), "Invalid stakeholder address");
         require(
             !stakeholders[_stakeholderAddress].isActive,
             "Stakeholder already registered"
@@ -103,7 +103,7 @@ contract StakeholderRegistry {
     function isRegisteredStakeholder(
         address _stakeholder,
         StakeholderRole _role
-    ) external view returns (bool) {
+    ) public view returns (bool) {
         return
             stakeholders[_stakeholder].isActive &&
             stakeholders[_stakeholder].role == _role;
@@ -111,13 +111,13 @@ contract StakeholderRegistry {
 
     function getStakeholderInfo(
         address _stakeholder
-    ) external view returns (StakeholderInfo memory) {
+    ) public view returns (StakeholderInfo memory) {
         return stakeholders[_stakeholder];
     }
 
     function getStakeholdersByRole(
         StakeholderRole _role
-    ) external view returns (address[] memory) {
+    ) public view returns (address[] memory) {
         return stakeholdersByRole[_role];
     }
 
