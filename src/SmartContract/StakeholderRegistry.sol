@@ -66,7 +66,10 @@ contract StakeholderRegistry {
         string memory _location,
         string memory _certifications
     ) external onlyAdmin {
-        require(_stakeholderAddress != address(0), "Invalid stakeholder address");
+        require(
+            _stakeholderAddress != address(0),
+            "Invalid stakeholder address"
+        );
         require(
             !stakeholders[_stakeholderAddress].isActive,
             "Stakeholder already registered"
@@ -125,5 +128,21 @@ contract StakeholderRegistry {
         address _stakeholder
     ) external validStakeholder(_stakeholder) {
         stakeholders[_stakeholder].lastActivity = block.timestamp;
+    }
+
+    function deactivateStakeholder(address _stakeholder) external onlyAdmin {
+        require(
+            stakeholders[_stakeholder].isActive,
+            "Stakeholder is not active"
+        );
+
+        stakeholders[_stakeholder].isActive = false;
+
+        emit StakeholderDeactivated(_stakeholder, block.timestamp);
+    }
+
+    function transferAdmin(address _newAdmin) external onlyAdmin {
+        require(_newAdmin != address(0), "Invalid new admin address");
+        admin = _newAdmin;
     }
 }

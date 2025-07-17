@@ -42,7 +42,7 @@ contract ShipmentRegistry {
     mapping(address => uint256[]) public stakeholderShipments;
     mapping(string => uint256) public trackingNumberToShipment;
 
-    uint256 public nextShipmentId = 0;
+    uint256 public nextShipmentId = 1;
     uint256 public totalShipments = 0;
 
     StakeholderRegistry public stakeholderRegistry;
@@ -216,11 +216,7 @@ contract ShipmentRegistry {
         ShipmentStatus _newStatus,
         string memory _trackingInfo,
         string memory _location
-    )
-        external
-        shipmentExists(_shipmentId)
-        onlyShipmentParticipant(_shipmentId)
-    {
+    ) public shipmentExists(_shipmentId) onlyShipmentParticipant(_shipmentId) {
         ShipmentInfo storage shipment = shipments[_shipmentId];
 
         require(
@@ -325,6 +321,44 @@ contract ShipmentRegistry {
         return shipments[_shipmentId];
     }
 
+    function getShipment(
+        uint256 _shipmentId
+    )
+        external
+        view
+        shipmentExists(_shipmentId)
+        returns (
+            uint256[] memory productIds,
+            address sender,
+            address receiver,
+            uint8 status,
+            uint256 createdAt,
+            string memory trackingInfo,
+            string memory transportMode
+        )
+    {
+        ShipmentInfo memory shipment = shipments[_shipmentId];
+
+        productIds = new uint256[](1);
+        productIds[0] = shipment.productId;
+
+        string memory latestTrackingInfo = "";
+        if (shipmentHistory[_shipmentId].length > 0) {
+            ShipmentUpdate[] memory history = shipmentHistory[_shipmentId];
+            latestTrackingInfo = history[history.length - 1].trackingInfo;
+        }
+
+        return (
+            productIds,
+            shipment.sender,
+            shipment.receiver,
+            uint8(shipment.status),
+            shipment.createdAt,
+            latestTrackingInfo,
+            shipment.transportMode
+        );
+    }
+
     function getShipmentHistory(
         uint256 _shipmentId
     )
@@ -339,12 +373,7 @@ contract ShipmentRegistry {
     function getShipmentByProduct(
         uint256 _productId
     ) external view returns (uint256) {
-        uint256 shipmentId = productToShipment[_productId];
-        require(
-            shipmentId != 0 || productToShipment[_productId] == 0,
-            "No shipment found for product"
-        );
-        return shipmentId;
+        return productToShipment[_productId];
     }
 
     function getShipmentByTrackingNumber(
@@ -370,7 +399,7 @@ contract ShipmentRegistry {
         uint256[] memory tempArray = new uint256[](totalShipments);
         uint256 count = 0;
 
-        for (uint256 i = 0; i < nextShipmentId; i++) {
+        for (uint256 i = 1; i < nextShipmentId; i++) {
             if (shipments[i].isActive && shipments[i].status == _status) {
                 tempArray[count] = i;
                 count++;
@@ -403,7 +432,7 @@ contract ShipmentRegistry {
         uint256 verif = 0;
         uint256 cancel = 0;
 
-        for (uint256 i = 0; i < nextShipmentId; i++) {
+        for (uint256 i = 1; i < nextShipmentId; i++) {
             if (shipments[i].isActive) {
                 if (shipments[i].status == ShipmentStatus.PREPARING) prep++;
                 else if (shipments[i].status == ShipmentStatus.SHIPPED) ship++;
@@ -433,10 +462,7 @@ contract ShipmentRegistry {
         )
     {
         shipmentId = trackingNumberToShipment[_trackingNumber];
-        require(
-            shipmentId != 0 || trackingNumberToShipment[_trackingNumber] == 0,
-            "Invalid tracking number"
-        );
+        require(shipmentId != 0, "Invalid tracking number");
 
         ShipmentInfo memory shipment = shipments[shipmentId];
         productId = shipment.productId;

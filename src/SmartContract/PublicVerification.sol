@@ -251,53 +251,73 @@ contract PublicVerification {
             bool isFullyTraced
         )
     {
-        (
+        try productRegistry.getProductJourney(_productId) returns (
             ProductRegistry.ProductInfo memory product,
             ProductRegistry.StageData memory farmStage,
             ProductRegistry.StageData memory processingStage,
             ProductRegistry.StageData memory distributionStage,
             ProductRegistry.StageData memory retailStage
-        ) = productRegistry.getProductJourney(_productId);
+        ) {
+            StakeholderRegistry.StakeholderInfo memory farmer;
+            StakeholderRegistry.StakeholderInfo memory processor;
+            StakeholderRegistry.StakeholderInfo memory distributor;
+            StakeholderRegistry.StakeholderInfo memory retailer;
 
-        StakeholderRegistry.StakeholderInfo memory farmer;
-        StakeholderRegistry.StakeholderInfo memory processor;
-        StakeholderRegistry.StakeholderInfo memory distributor;
-        StakeholderRegistry.StakeholderInfo memory retailer;
+            if (farmStage.timestamp > 0) {
+                farmer = stakeholderRegistry.getStakeholderInfo(
+                    farmStage.stakeholder
+                );
+            }
 
-        if (farmStage.timestamp > 0) {
-            farmer = stakeholderRegistry.getStakeholderInfo(
-                farmStage.stakeholder
+            if (processingStage.timestamp > 0) {
+                processor = stakeholderRegistry.getStakeholderInfo(
+                    processingStage.stakeholder
+                );
+            }
+
+            if (distributionStage.timestamp > 0) {
+                distributor = stakeholderRegistry.getStakeholderInfo(
+                    distributionStage.stakeholder
+                );
+            }
+
+            if (retailStage.timestamp > 0) {
+                retailer = stakeholderRegistry.getStakeholderInfo(
+                    retailStage.stakeholder
+                );
+            }
+
+            bool fullyTraced = (farmStage.timestamp > 0 &&
+                (product.currentStage == ProductRegistry.ProductStage.FARM ||
+                    processingStage.timestamp > 0) &&
+                (product.currentStage <=
+                    ProductRegistry.ProductStage.PROCESSING ||
+                    distributionStage.timestamp > 0) &&
+                (product.currentStage <=
+                    ProductRegistry.ProductStage.DISTRIBUTION ||
+                    retailStage.timestamp > 0));
+
+            return (
+                product,
+                farmer,
+                processor,
+                distributor,
+                retailer,
+                fullyTraced
+            );
+        } catch {
+            // Return empty data for non-existent products
+            StakeholderRegistry.StakeholderInfo memory emptyStakeholder;
+            ProductRegistry.ProductInfo memory emptyProduct;
+            return (
+                emptyProduct,
+                emptyStakeholder,
+                emptyStakeholder,
+                emptyStakeholder,
+                emptyStakeholder,
+                false
             );
         }
-
-        if (processingStage.timestamp > 0) {
-            processor = stakeholderRegistry.getStakeholderInfo(
-                processingStage.stakeholder
-            );
-        }
-
-        if (distributionStage.timestamp > 0) {
-            distributor = stakeholderRegistry.getStakeholderInfo(
-                distributionStage.stakeholder
-            );
-        }
-
-        if (retailStage.timestamp > 0) {
-            retailer = stakeholderRegistry.getStakeholderInfo(
-                retailStage.stakeholder
-            );
-        }
-
-        bool fullyTraced = (farmStage.timestamp > 0 &&
-            (product.currentStage == ProductRegistry.ProductStage.FARM ||
-                processingStage.timestamp > 0) &&
-            (product.currentStage <= ProductRegistry.ProductStage.PROCESSING ||
-                distributionStage.timestamp > 0) &&
-            (product.currentStage <=
-                ProductRegistry.ProductStage.DISTRIBUTION ||
-                retailStage.timestamp > 0));
-
-        return (product, farmer, processor, distributor, retailer, fullyTraced);
     }
 
     function getCompleteTraceabilityReport(
@@ -351,6 +371,28 @@ contract PublicVerification {
             shipmentInfo,
             shipmentHistory
         );
+    }
+
+    function verifyProduct(uint256 _productId) external view returns (bool) {
+        try productRegistry.verifyProduct(_productId) returns (
+            bool valid,
+            ProductRegistry.ProductInfo memory product
+        ) {
+            if (!valid) {
+                return false;
+            }
+            if (
+                !stakeholderRegistry.isRegisteredStakeholder(
+                    product.farmer,
+                    StakeholderRegistry.StakeholderRole.FARMER
+                )
+            ) {
+                return false;
+            }
+            return true;
+        } catch {
+            return false;
+        }
     }
 
     function performAudit(

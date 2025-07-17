@@ -50,6 +50,17 @@ contract SupplyChainManager {
         );
     }
 
+    modifier onlyRegisteredFarmer() {
+        require(
+            stakeholderRegistry.isRegisteredStakeholder(
+                msg.sender,
+                StakeholderRegistry.StakeholderRole.FARMER
+            ),
+            "Only registered farmers can create products"
+        );
+        _;
+    }
+
     function createProductWithShipment(
         string memory _productName,
         string memory _batchNumber,
@@ -57,7 +68,7 @@ contract SupplyChainManager {
         address _receiver,
         string memory _trackingNumber,
         string memory _transportMode
-    ) external returns (uint256 productId, uint256 shipmentId) {
+    ) external onlyRegisteredFarmer returns (uint256 productId, uint256 shipmentId) {
         productId = productRegistry.registerProduct(
             _productName,
             _batchNumber,
@@ -83,25 +94,34 @@ contract SupplyChainManager {
             ShipmentRegistry.ShipmentUpdate[] memory shipmentHistory
         )
     {
-        (
-            productInfo,
-            farmStage,
-            processingStage,
-            distributionStage,
-            retailStage
-        ) = productRegistry.getProductJourney(_productId);
-
-        try shipmentRegistry.getShipmentByProduct(_productId) returns (
-            uint256 shipmentId
+        try productRegistry.getProductJourney(_productId) returns (
+            ProductRegistry.ProductInfo memory prodInfo,
+            ProductRegistry.StageData memory farm,
+            ProductRegistry.StageData memory processing,
+            ProductRegistry.StageData memory distribution,
+            ProductRegistry.StageData memory retail
         ) {
-            if (shipmentId > 0) {
-                hasShipment = true;
-                shipmentInfo = shipmentRegistry.getShipmentInfo(shipmentId);
-                shipmentHistory = shipmentRegistry.getShipmentHistory(
-                    shipmentId
-                );
+            productInfo = prodInfo;
+            farmStage = farm;
+            processingStage = processing;
+            distributionStage = distribution;
+            retailStage = retail;
+
+            try shipmentRegistry.getShipmentByProduct(_productId) returns (
+                uint256 shipmentId
+            ) {
+                if (shipmentId > 0) {
+                    hasShipment = true;
+                    shipmentInfo = shipmentRegistry.getShipmentInfo(shipmentId);
+                    shipmentHistory = shipmentRegistry.getShipmentHistory(
+                        shipmentId
+                    );
+                }
+            } catch {
+                hasShipment = false;
             }
         } catch {
+            // Return empty data for non-existent products
             hasShipment = false;
         }
 
@@ -128,34 +148,42 @@ contract SupplyChainManager {
             string memory status
         )
     {
-        (productIsValid, ) = productRegistry.verifyProduct(_productId);
-
-        shipmentIsValid = true;
-        status = "Product verified";
-
-        try shipmentRegistry.getShipmentByProduct(_productId) returns (
-            uint256 shipmentId
+        try productRegistry.verifyProduct(_productId) returns (
+            bool valid,
+            ProductRegistry.ProductInfo memory
         ) {
-            if (shipmentId > 0) {
-                ShipmentRegistry.ShipmentInfo
-                    memory shipmentInfo = shipmentRegistry.getShipmentInfo(
-                        shipmentId
-                    );
+            productIsValid = valid;
+            shipmentIsValid = true;
+            status = "Product verified";
 
-                if (
-                    shipmentInfo.status ==
-                    ShipmentRegistry.ShipmentStatus.CANCELLED ||
-                    shipmentInfo.status ==
-                    ShipmentRegistry.ShipmentStatus.UNABLE_TO_DELIVERED
-                ) {
-                    shipmentIsValid = false;
-                    status = "Shipment issues detected";
-                } else {
-                    status = "Product and shipment verified";
+            try shipmentRegistry.getShipmentByProduct(_productId) returns (
+                uint256 shipmentId
+            ) {
+                if (shipmentId > 0) {
+                    ShipmentRegistry.ShipmentInfo
+                        memory shipmentInfo = shipmentRegistry.getShipmentInfo(
+                            shipmentId
+                        );
+
+                    if (
+                        shipmentInfo.status ==
+                        ShipmentRegistry.ShipmentStatus.CANCELLED ||
+                        shipmentInfo.status ==
+                        ShipmentRegistry.ShipmentStatus.UNABLE_TO_DELIVERED
+                    ) {
+                        shipmentIsValid = false;
+                        status = "Shipment issues detected";
+                    } else {
+                        status = "Product and shipment verified";
+                    }
                 }
+            } catch {
+                status = "Product verified, no shipment data";
             }
         } catch {
-            status = "Product verified, no shipment data";
+            productIsValid = false;
+            shipmentIsValid = false;
+            status = "Product not found";
         }
 
         return (productIsValid, shipmentIsValid, status);
@@ -265,15 +293,24 @@ contract SupplyChainManager {
             uint256 shipmentId
         )
     {
-        productId = productRegistry.getProductByBatch(_batchNumber);
-        productInfo = productRegistry.getProductInfo(productId);
-
-        try shipmentRegistry.getShipmentByProduct(productId) returns (
-            uint256 shipId
+        try productRegistry.getProductByBatch(_batchNumber) returns (
+            uint256 prodId
         ) {
-            hasShipment = true;
-            shipmentId = shipId;
+            productId = prodId;
+            productInfo = productRegistry.getProductInfo(productId);
+
+            try shipmentRegistry.getShipmentByProduct(productId) returns (
+                uint256 shipId
+            ) {
+                hasShipment = true;
+                shipmentId = shipId;
+            } catch {
+                hasShipment = false;
+                shipmentId = 0;
+            }
         } catch {
+            // Return empty data for non-existent batch
+            productId = 0;
             hasShipment = false;
             shipmentId = 0;
         }

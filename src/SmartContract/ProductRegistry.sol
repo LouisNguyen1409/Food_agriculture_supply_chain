@@ -35,7 +35,7 @@ contract ProductRegistry {
     mapping(string => uint256) public batchToProductId;
     mapping(address => uint256[]) public stakeholderProducts;
 
-    uint256 public nextProductId = 0;
+    uint256 public nextProductId = 1;
     uint256 public totalProducts = 0;
     StakeholderRegistry public stakeholderRegistry;
 
@@ -294,6 +294,39 @@ contract ProductRegistry {
         return products[_productId];
     }
 
+    function getProduct(
+        uint256 _productId
+    )
+        external
+        view
+        productExists(_productId)
+        returns (
+            string memory productName,
+            address farmer,
+            uint256 harvestDate,
+            string memory origin,
+            uint8 status,
+            string memory batchNumber,
+            bool isActive
+        )
+    {
+        ProductInfo memory product = products[_productId];
+
+        StageData memory farmStage = productStages[_productId][
+            ProductStage.FARM
+        ];
+
+        return (
+            product.productName,
+            product.farmer,
+            product.createdAt,
+            farmStage.data,
+            uint8(product.currentStage),
+            product.batchNumber,
+            product.isActive
+        );
+    }
+
     function getProductStageData(
         uint256 _productId,
         ProductStage _stage
@@ -328,13 +361,7 @@ contract ProductRegistry {
         string memory _batchNumber
     ) external view returns (uint256) {
         uint256 productId = batchToProductId[_batchNumber];
-        require(
-            productId != 0 ||
-                (productId == 0 &&
-                    keccak256(abi.encodePacked(products[0].batchNumber)) ==
-                    keccak256(abi.encodePacked(_batchNumber))),
-            "Product not found"
-        );
+        require(productId != 0, "Product not found");
         return productId;
     }
 
@@ -350,7 +377,7 @@ contract ProductRegistry {
         uint256[] memory tempArray = new uint256[](totalProducts);
         uint256 count = 0;
 
-        for (uint256 i = 0; i < nextProductId; i++) {
+        for (uint256 i = 1; i < nextProductId; i++) {
             if (products[i].isActive && products[i].currentStage == _stage) {
                 tempArray[count] = i;
                 count++;
@@ -383,7 +410,7 @@ contract ProductRegistry {
         uint256 retail = 0;
         uint256 consumed = 0;
 
-        for (uint256 i = 0; i < nextProductId; i++) {
+        for (uint256 i = 1; i < nextProductId; i++) {
             if (products[i].isActive) {
                 if (products[i].currentStage == ProductStage.FARM) {
                     farm++;
