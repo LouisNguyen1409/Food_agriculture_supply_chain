@@ -47,6 +47,13 @@ contract SupplyChainFactory {
     address public productRegistryTemplate;
     address public shipmentRegistryTemplate;
 
+    // Oracle Feed addresses
+    address public temperatureFeed;
+    address public humidityFeed;
+    address public rainfallFeed;
+    address public windSpeedFeed;
+    address public priceFeed;
+
     // Events
     event SystemCreated(
         uint256 indexed systemId,
@@ -106,11 +113,26 @@ contract SupplyChainFactory {
         _;
     }
 
-    constructor(address _contractRegistry) {
+    constructor(
+        address _contractRegistry,
+        address _temperatureFeed,
+        address _humidityFeed,
+        address _rainfallFeed,
+        address _windSpeedFeed,
+        address _priceFeed
+    ) {
         factoryOwner = msg.sender;
         if (_contractRegistry != address(0)) {
             contractRegistry = ContractRegistry(_contractRegistry);
         }
+        
+        // Set oracle feeds
+        temperatureFeed = _temperatureFeed;
+        humidityFeed = _humidityFeed;
+        rainfallFeed = _rainfallFeed;
+        windSpeedFeed = _windSpeedFeed;
+        priceFeed = _priceFeed;
+        
         // Allow deployment without registry initially for setup
     }
 
@@ -126,6 +148,23 @@ contract SupplyChainFactory {
             "Invalid contract registry address"
         );
         contractRegistry = ContractRegistry(_contractRegistry);
+    }
+
+    /**
+     * @dev Update oracle feed addresses
+     */
+    function updateOracleFeeds(
+        address _temperatureFeed,
+        address _humidityFeed,
+        address _rainfallFeed,
+        address _windSpeedFeed,
+        address _priceFeed
+    ) external onlyFactoryOwner {
+        temperatureFeed = _temperatureFeed;
+        humidityFeed = _humidityFeed;
+        rainfallFeed = _rainfallFeed;
+        windSpeedFeed = _windSpeedFeed;
+        priceFeed = _priceFeed;
     }
 
     // Set template contracts for cloning (optional - for gas optimization)
@@ -170,7 +209,12 @@ contract SupplyChainFactory {
         // Deploy registry contracts
         StakeholderRegistry stakeholderRegistry = new StakeholderRegistry();
         ProductRegistry productRegistry = new ProductRegistry(
-            address(stakeholderRegistry)
+            address(stakeholderRegistry),
+            temperatureFeed,
+            humidityFeed,
+            rainfallFeed,
+            windSpeedFeed,
+            priceFeed
         );
         ShipmentRegistry shipmentRegistry = new ShipmentRegistry(
             address(stakeholderRegistry),
@@ -283,7 +327,12 @@ contract SupplyChainFactory {
         // Deploy only core contracts
         StakeholderRegistry stakeholderRegistry = new StakeholderRegistry();
         ProductRegistry productRegistry = new ProductRegistry(
-            address(stakeholderRegistry)
+            address(stakeholderRegistry),
+            temperatureFeed,
+            humidityFeed,
+            rainfallFeed,
+            windSpeedFeed,
+            priceFeed
         );
 
         // Store system information (without shipment and manager contracts)

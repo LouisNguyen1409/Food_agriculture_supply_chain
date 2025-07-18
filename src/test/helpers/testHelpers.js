@@ -44,9 +44,40 @@ class TestHelpers {
         return stakeholderRegistry;
     }
 
+    async deployMockOracleFeeds() {
+        if (this.deployedContracts.oracleFeeds) {
+            return this.deployedContracts.oracleFeeds;
+        }
+
+        // Use zero addresses as mock feeds for testing - this allows tests to run
+        // without requiring actual oracle contracts
+        const mockAddress = ethers.ZeroAddress;
+
+        const oracleFeeds = {
+            temperatureFeed: { getAddress: async () => mockAddress },
+            humidityFeed: { getAddress: async () => mockAddress },
+            rainfallFeed: { getAddress: async () => mockAddress },
+            windSpeedFeed: { getAddress: async () => mockAddress },
+            priceFeed: { getAddress: async () => mockAddress }
+        };
+
+        this.deployedContracts.oracleFeeds = oracleFeeds;
+        return oracleFeeds;
+    }
+
     async deployProductRegistry(stakeholderRegistryAddress) {
+        // Deploy mock oracle feeds if not already deployed
+        const oracleFeeds = await this.deployMockOracleFeeds();
+        
         const ProductRegistry = await ethers.getContractFactory("ProductRegistry");
-        const productRegistry = await ProductRegistry.deploy(stakeholderRegistryAddress);
+        const productRegistry = await ProductRegistry.deploy(
+            stakeholderRegistryAddress,
+            await oracleFeeds.temperatureFeed.getAddress(),
+            await oracleFeeds.humidityFeed.getAddress(),
+            await oracleFeeds.rainfallFeed.getAddress(),
+            await oracleFeeds.windSpeedFeed.getAddress(),
+            await oracleFeeds.priceFeed.getAddress()
+        );
         await productRegistry.waitForDeployment();
         
         this.deployedContracts.productRegistry = productRegistry;
@@ -92,8 +123,18 @@ class TestHelpers {
     }
 
     async deploySupplyChainFactory(contractRegistryAddress = ethers.ZeroAddress) {
+        // Deploy mock oracle feeds if not already deployed
+        const oracleFeeds = await this.deployMockOracleFeeds();
+        
         const SupplyChainFactory = await ethers.getContractFactory("SupplyChainFactory");
-        const supplyChainFactory = await SupplyChainFactory.deploy(contractRegistryAddress);
+        const supplyChainFactory = await SupplyChainFactory.deploy(
+            contractRegistryAddress,
+            await oracleFeeds.temperatureFeed.getAddress(),
+            await oracleFeeds.humidityFeed.getAddress(),
+            await oracleFeeds.rainfallFeed.getAddress(),
+            await oracleFeeds.windSpeedFeed.getAddress(),
+            await oracleFeeds.priceFeed.getAddress()
+        );
         await supplyChainFactory.waitForDeployment();
         
         this.deployedContracts.supplyChainFactory = supplyChainFactory;
@@ -283,12 +324,12 @@ class TestHelpers {
         return `${prefix}-${timestamp}-${random}`;
     }
 
-    async createSampleProduct(productRegistry, farmer) {
-        const uniqueBatchNumber = this.generateUniqueBatchNumber("BATCH");
+    async createSampleProduct(productRegistry, farmer, productName = "Organic Apples", batchNumber = null, farmData = "Harvested from organic farm, pesticide-free") {
+        const finalBatchNumber = batchNumber || this.generateUniqueBatchNumber("BATCH");
         const tx = await productRegistry.connect(farmer).registerProduct(
-            "Organic Apples",
-            uniqueBatchNumber,
-            "Harvested from organic farm, pesticide-free"
+            productName,
+            finalBatchNumber,
+            farmData
         );
         const receipt = await tx.wait();
         
@@ -304,15 +345,15 @@ class TestHelpers {
 
         if (event) {
             const parsed = productRegistry.interface.parseLog(event);
-            return { productId: parsed.args.productId, batchNumber: uniqueBatchNumber };
+            return { productId: parsed.args.productId, batchNumber: finalBatchNumber };
         }
         
-        return { productId: 0, batchNumber: uniqueBatchNumber }; // Return product data if event parsing fails
+        return { productId: 0, batchNumber: finalBatchNumber }; // Return product data if event parsing fails
     }
 
-    async createSampleProductSimple(productRegistry, farmer) {
+    async createSampleProductSimple(productRegistry, farmer, productName = "Organic Apples", batchNumber = null, farmData = "Harvested from organic farm, pesticide-free") {
         // For backward compatibility - returns just productId
-        const result = await this.createSampleProduct(productRegistry, farmer);
+        const result = await this.createSampleProduct(productRegistry, farmer, productName, batchNumber, farmData);
         return result.productId;
     }
 

@@ -492,7 +492,14 @@ describe("Supply Chain Integration Tests", function () {
             // Supply Chain Factory
             console.log("Deploying SupplyChainFactory...");
             const SupplyChainFactory = await ethers.getContractFactory("SupplyChainFactory");
-            const factoryTx = await SupplyChainFactory.deploy(await contractRegistryTx.getAddress());
+            const factoryTx = await SupplyChainFactory.deploy(
+                await contractRegistryTx.getAddress(),
+                ethers.ZeroAddress, // temperatureFeed
+                ethers.ZeroAddress, // humidityFeed
+                ethers.ZeroAddress, // rainfallFeed
+                ethers.ZeroAddress, // windSpeedFeed
+                ethers.ZeroAddress  // priceFeed
+            );
             const factoryReceipt = await factoryTx.deploymentTransaction().wait();
             console.log(`SupplyChainFactory deployment gas used: ${factoryReceipt.gasUsed.toString()}`);
             totalGas += factoryReceipt.gasUsed;

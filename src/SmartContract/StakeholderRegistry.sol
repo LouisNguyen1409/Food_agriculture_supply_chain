@@ -128,6 +128,21 @@ contract StakeholderRegistry {
         address _stakeholder
     ) external validStakeholder(_stakeholder) {
         stakeholders[_stakeholder].lastActivity = block.timestamp;
+        emit StakeholderUpdated(_stakeholder, block.timestamp);
+    }
+
+    function updateStakeholderInfo(
+        address _stakeholder,
+        string memory _businessName,
+        string memory _location,
+        string memory _certifications
+    ) external onlyAdmin validStakeholder(_stakeholder) {
+        stakeholders[_stakeholder].businessName = _businessName;
+        stakeholders[_stakeholder].location = _location;
+        stakeholders[_stakeholder].certifications = _certifications;
+        stakeholders[_stakeholder].lastActivity = block.timestamp;
+        
+        emit StakeholderUpdated(_stakeholder, block.timestamp);
     }
 
     function deactivateStakeholder(address _stakeholder) external onlyAdmin {
