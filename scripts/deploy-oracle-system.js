@@ -1,23 +1,56 @@
-const { ethers } = require("hardhat");
+const { ethers, network } = require("hardhat");
 
 async function main() {
     console.log("🌤️ Deploying Oracle-Enhanced Supply Chain System...\n");
+    console.log(`Network: ${network.name} (Chain ID: ${network.config.chainId})`);
 
     // Get deployer
     const [deployer] = await ethers.getSigners();
     console.log(`Deploying with account: ${deployer.address}`);
-    console.log(`Account balance: ${ethers.formatEther(await deployer.provider.getBalance(deployer.address))} ETH\n`);
+    console.log(`Account balance: ${ethers.formatEther(await deployer.provider.getBalance(deployer.address))} MATIC\n`);
 
-    // For testnet/local development, we'll use mock price feeds
-    // In production, use real Chainlink oracle addresses
-    const CHAINLINK_FEEDS = {
-        // Polygon Mumbai Testnet addresses (replace with mainnet for production)
-        ETH_USD: "0x0715A7794a1dc8e42615F059dD6e406A6594651A", // ETH/USD
-        TEMP_MOCK: ethers.ZeroAddress, // We'll deploy mock feeds
-        HUMIDITY_MOCK: ethers.ZeroAddress,
-        RAINFALL_MOCK: ethers.ZeroAddress,
-        WIND_MOCK: ethers.ZeroAddress
-    };
+    // Determine which oracle feeds to use based on network
+    const isMainnet = network.config.chainId === 137;
+    const isAmoyTestnet = network.config.chainId === 80002;
+    const isLocal = network.name === "hardhat" || network.name === "localhost";
+
+    let CHAINLINK_FEEDS;
+    
+    if (isMainnet) {
+        // Polygon Mainnet Chainlink feeds
+        CHAINLINK_FEEDS = {
+            ETH_USD: "0xF9680D99D6C9589e2a93a78A04A279e509205945", // ETH/USD
+            MATIC_USD: "0xAB594600376Ec9fD91F8e885dADF0CE036862dE0", // MATIC/USD
+            // Note: Weather data feeds need to be sourced from specialized providers
+            // For production, integrate with weather APIs like WeatherAPI, OpenWeatherMap
+            TEMP_MOCK: ethers.ZeroAddress, // Deploy mock for demo
+            HUMIDITY_MOCK: ethers.ZeroAddress,
+            RAINFALL_MOCK: ethers.ZeroAddress,
+            WIND_MOCK: ethers.ZeroAddress
+        };
+    } else if (isAmoyTestnet) {
+        // Polygon Amoy Testnet feeds (limited availability)
+        CHAINLINK_FEEDS = {
+            ETH_USD: "0x001382149eBa3441043c1c66972b4772963f5D43", // ETH/USD on Amoy
+            MATIC_USD: ethers.ZeroAddress, // Not available on Amoy, use mock
+            TEMP_MOCK: ethers.ZeroAddress, // Deploy mock feeds
+            HUMIDITY_MOCK: ethers.ZeroAddress,
+            RAINFALL_MOCK: ethers.ZeroAddress,
+            WIND_MOCK: ethers.ZeroAddress
+        };
+    } else {
+        // Local development - all mocks
+        CHAINLINK_FEEDS = {
+            ETH_USD: ethers.ZeroAddress,
+            MATIC_USD: ethers.ZeroAddress,
+            TEMP_MOCK: ethers.ZeroAddress,
+            HUMIDITY_MOCK: ethers.ZeroAddress,
+            RAINFALL_MOCK: ethers.ZeroAddress,
+            WIND_MOCK: ethers.ZeroAddress
+        };
+    }
+
+    console.log(`Using ${isMainnet ? 'MAINNET' : isAmoyTestnet ? 'TESTNET' : 'LOCAL'} oracle configuration\n`);
 
     // 1. Deploy Mock Oracle Feeds for Development
     console.log("📊 Deploying Mock Oracle Feeds...");
@@ -53,12 +86,21 @@ async function main() {
     await windSpeedFeed.waitForDeployment();
     console.log(`✅ Wind Speed Feed deployed: ${await windSpeedFeed.getAddress()}`);
 
-    const priceFeed = await MockV3Aggregator.deploy(
-        8, // 8 decimals
-        200000000000 // $2000.00 USD per ETH
-    );
-    await priceFeed.waitForDeployment();
-    console.log(`✅ Price Feed deployed: ${await priceFeed.getAddress()}\n`);
+    // Use real price feed if available, otherwise deploy mock
+    let priceFeedAddress;
+    if (CHAINLINK_FEEDS.ETH_USD !== ethers.ZeroAddress) {
+        priceFeedAddress = CHAINLINK_FEEDS.ETH_USD;
+        console.log(`✅ Using Chainlink ETH/USD Feed: ${priceFeedAddress}`);
+    } else {
+        const priceFeed = await MockV3Aggregator.deploy(
+            8, // 8 decimals
+            200000000000 // $2000.00 USD per ETH
+        );
+        await priceFeed.waitForDeployment();
+        priceFeedAddress = await priceFeed.getAddress();
+        console.log(`✅ Mock Price Feed deployed: ${priceFeedAddress}`);
+    }
+    console.log();
 
     // 2. Deploy Oracle Manager
     console.log("🎛️ Deploying Oracle Manager...");
@@ -68,7 +110,7 @@ async function main() {
         await humidityFeed.getAddress(),
         await rainfallFeed.getAddress(),
         await windSpeedFeed.getAddress(),
-        await priceFeed.getAddress()
+        priceFeedAddress
     );
     await oracleManager.waitForDeployment();
     console.log(`✅ Oracle Manager deployed: ${await oracleManager.getAddress()}\n`);
@@ -96,7 +138,7 @@ async function main() {
         await humidityFeed.getAddress(),
         await rainfallFeed.getAddress(),
         await windSpeedFeed.getAddress(),
-        await priceFeed.getAddress()
+        priceFeedAddress
     );
     await oracleProductRegistry.waitForDeployment();
     console.log(`✅ Oracle Product Registry deployed: ${await oracleProductRegistry.getAddress()}\n`);
@@ -124,7 +166,7 @@ async function main() {
         await humidityFeed.getAddress(),
         await rainfallFeed.getAddress(),
         await windSpeedFeed.getAddress(),
-        await priceFeed.getAddress(),
+        priceFeedAddress,
         "Iowa Corn Belt Weather Station"
     );
 
@@ -135,7 +177,7 @@ async function main() {
         await humidityFeed.getAddress(),
         await rainfallFeed.getAddress(),
         await windSpeedFeed.getAddress(),
-        await priceFeed.getAddress(),
+        priceFeedAddress,
         "California Central Valley Weather Station"
     );
 
@@ -254,7 +296,19 @@ async function main() {
     console.log(`Humidity Feed:         ${await humidityFeed.getAddress()}`);
     console.log(`Rainfall Feed:         ${await rainfallFeed.getAddress()}`);
     console.log(`Wind Speed Feed:       ${await windSpeedFeed.getAddress()}`);
-    console.log(`Price Feed:            ${await priceFeed.getAddress()}`);
+    console.log(`Price Feed:            ${priceFeedAddress} ${CHAINLINK_FEEDS.ETH_USD !== ethers.ZeroAddress ? '(Chainlink)' : '(Mock)'}`);
+    
+    if (isMainnet) {
+        console.log("\n🔴 MAINNET DEPLOYMENT NOTES:");
+        console.log("• Using real Chainlink price feeds");
+        console.log("• Weather feeds are mocks - integrate with real weather APIs for production");
+        console.log("• Consider implementing timelocks and governance for upgrades");
+    } else if (isAmoyTestnet) {
+        console.log("\n🟡 TESTNET DEPLOYMENT NOTES:");
+        console.log("• Mix of real and mock feeds - perfect for testing");
+        console.log("• Get test MATIC from https://faucet.polygon.technology/");
+    }
+    
     console.log("\n🚀 Ready for oracle-enhanced supply chain operations!");
 
     // Return deployed contracts for testing
@@ -268,7 +322,9 @@ async function main() {
         humidityFeed,
         rainfallFeed,
         windSpeedFeed,
-        priceFeed,
+        priceFeedAddress,
+        network: network.name,
+        chainId: network.config.chainId,
         accounts: { deployer, farmer, processor, distributor, retailer }
     };
 }

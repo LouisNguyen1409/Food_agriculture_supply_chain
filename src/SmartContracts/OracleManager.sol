@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import "../../contracts/Oracle/Weather.sol";
-import "../../contracts/Oracle/Price.sol";
+import "./Oracles/Weather.sol";
+import "./Oracles/Price.sol";
 import "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
 
 contract OracleManager {

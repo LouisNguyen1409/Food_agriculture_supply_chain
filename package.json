@@ -15,8 +15,9 @@
     "test:integration": "npx hardhat test src/test/IntegrationTests.test.js",
     "compile": "npx hardhat compile",
     "deploy:local": "npx hardhat run scripts/deploy.js --network localhost",
-    "deploy:polygon": "npx hardhat run scripts/deploy.js --network polygon",
-    "deploy:oracle": "npx hardhat run scripts/deploy-oracle-system.js --network localhost",
+    "deploy:polygon": "npx hardhat run scripts/deploy-integrated-oracles.js --network polygon",
+    "deploy:polygon-testnet": "npx hardhat run scripts/deploy-integrated-oracles.js --network polygonAmoy",
+    "deploy:oracles": "npx hardhat run scripts/deploy-integrated-oracles.js --network localhost",
     "oracle:examples": "npx hardhat run scripts/oracle-examples.js --network localhost",
     "deploy:test": "npx hardhat run scripts/deploy-test.js --network localhost"
   },

@@ -16,15 +16,22 @@ module.exports = {
             chainId: 31337,
             allowUnlimitedContractSize: true,
         },
-        // Only add Polygon network if environment variables are set
-        ...(process.env.POLYGON_RPC_URL && process.env.PRIVATE_KEY ? {
-            polygon: {
-                url: process.env.POLYGON_RPC_URL,
-                accounts: [process.env.PRIVATE_KEY],
-                chainId: 80002,
-                blockConfirmations: 6,
-            },
-        } : {}),
+        // Polygon Amoy Testnet
+        polygonAmoy: {
+            url: process.env.POLYGON_RPC_URL || "https://rpc-amoy.polygon.technology/",
+            accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+            chainId: 80002,
+            blockConfirmations: 6,
+            gasPrice: 30000000000, // 30 gwei
+        },
+        // Polygon Mainnet
+        polygon: {
+            url: process.env.POLYGON_MAINNET_RPC_URL || process.env.POLYGON_RPC_URL || "https://polygon-rpc.com/",
+            accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+            chainId: 137,
+            blockConfirmations: 6,
+            gasPrice: 50000000000, // 50 gwei (adjust based on network conditions)
+        },
     },
     solidity: {
         version: "0.8.19",
@@ -57,8 +64,19 @@ module.exports = {
     etherscan: {
         apiKey: {
             polygon: process.env.POLYGONSCAN_API_KEY || "",
-            polygonMumbai: process.env.POLYGONSCAN_API_KEY || "",
+            polygonAmoy: process.env.POLYGONSCAN_API_KEY || "",
+            polygonMumbai: process.env.POLYGONSCAN_API_KEY || "", // Legacy Mumbai support
         },
+        customChains: [
+            {
+                network: "polygonAmoy",
+                chainId: 80002,
+                urls: {
+                    apiURL: "https://api-amoy.polygonscan.com/api",
+                    browserURL: "https://amoy.polygonscan.com/"
+                }
+            }
+        ]
     },
     namedAccounts: {
         deployer: {
@@ -73,7 +91,7 @@ module.exports = {
         coinmarketcap: process.env.COINMARKETCAP_API_KEY || "",
     },
     paths: {
-        sources: "./src/SmartContract",
+        sources: "./src/SmartContracts",
         tests: "./src/test",
         cache: "./cache",
         artifacts: "./artifacts",
