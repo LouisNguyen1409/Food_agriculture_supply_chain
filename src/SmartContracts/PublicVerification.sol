@@ -466,7 +466,7 @@ contract PublicVerification {
         )
     {
         try shipmentRegistry.trackShipment(_trackingNumber) returns (
-            uint256 shipmentId,
+            uint256,
             uint256 prodId,
             ShipmentRegistry.ShipmentStatus status,
             string memory desc,

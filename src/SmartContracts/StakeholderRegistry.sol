@@ -141,7 +141,7 @@ contract StakeholderRegistry {
         stakeholders[_stakeholder].location = _location;
         stakeholders[_stakeholder].certifications = _certifications;
         stakeholders[_stakeholder].lastActivity = block.timestamp;
-        
+
         emit StakeholderUpdated(_stakeholder, block.timestamp);
     }
 

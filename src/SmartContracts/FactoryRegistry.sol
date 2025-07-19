@@ -31,8 +31,8 @@ contract FactoryRegistry {
 
     modifier onlyAuthorized() {
         require(
-            contractRegistry.authorizedDeployers(msg.sender) || 
-            msg.sender == contractRegistry.registryOwner(),
+            contractRegistry.authorizedDeployers(msg.sender) ||
+                msg.sender == contractRegistry.registryOwner(),
             "Not authorized deployer"
         );
         _;

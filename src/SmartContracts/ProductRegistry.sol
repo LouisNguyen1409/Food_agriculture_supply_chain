@@ -284,7 +284,7 @@ contract ProductRegistry {
 
         // Check for weather alerts
         _checkWeatherConditions(productId, currentWeather);
-        
+
         // Check for price alerts
         _checkPriceConditions(productId, currentPrice);
 
