@@ -224,7 +224,6 @@ contract ShipmentRegistry {
             "Invalid shipment status transition"
         );
 
-        ShipmentStatus oldStatus = shipment.status;
         shipment.status = _newStatus;
         shipment.lastUpdated = block.timestamp;
 

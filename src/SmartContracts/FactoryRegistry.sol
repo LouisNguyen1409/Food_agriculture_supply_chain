@@ -96,8 +96,7 @@ contract FactoryRegistry {
      */
     function registerCommonFactories(
         address _productFactory,
-        address _shipmentFactory,
-        address _supplyChainFactory
+        address _shipmentFactory
     ) external onlyAuthorized {
         if (_productFactory != address(0)) {
             registerFactory(
@@ -112,14 +111,6 @@ contract FactoryRegistry {
                 _shipmentFactory,
                 "ShipmentFactory",
                 "Shipment creation and logistics"
-            );
-        }
-
-        if (_supplyChainFactory != address(0)) {
-            registerFactory(
-                _supplyChainFactory,
-                "SupplyChainFactory",
-                "Complete supply chain system creation"
             );
         }
     }

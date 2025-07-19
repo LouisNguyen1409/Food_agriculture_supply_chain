@@ -85,11 +85,9 @@ contract ContractRegistry {
             "StakeholderRegistry",
             "ProductRegistry",
             "ShipmentRegistry",
-            "SupplyChainManager",
             "PublicVerification",
             "ProductFactory",
-            "ShipmentFactory",
-            "SupplyChainFactory"
+            "ShipmentFactory"
         ];
     }
 
@@ -150,7 +148,6 @@ contract ContractRegistry {
         address stakeholderRegistry,
         address productRegistry,
         address shipmentRegistry,
-        address supplyChainManager,
         address publicVerification
     ) external onlyAuthorized {
         SystemContracts storage system = systemContracts[systemId];
@@ -161,21 +158,18 @@ contract ContractRegistry {
         system.contracts["StakeholderRegistry"] = stakeholderRegistry;
         system.contracts["ProductRegistry"] = productRegistry;
         system.contracts["ShipmentRegistry"] = shipmentRegistry;
-        system.contracts["SupplyChainManager"] = supplyChainManager;
         system.contracts["PublicVerification"] = publicVerification;
 
         // Set versions (simplified - all start at 1)
         system.versions["StakeholderRegistry"] = 1;
         system.versions["ProductRegistry"] = 1;
         system.versions["ShipmentRegistry"] = 1;
-        system.versions["SupplyChainManager"] = 1;
         system.versions["PublicVerification"] = 1;
 
         system.contractTypes = [
             "StakeholderRegistry",
             "ProductRegistry",
             "ShipmentRegistry",
-            "SupplyChainManager",
             "PublicVerification"
         ];
 
@@ -268,7 +262,7 @@ contract ContractRegistry {
         contractVersions[contractType].push(contractId);
         latestContract[contractType] = contractId;
         contractsByType[contractType].push(newContractAddress);
-        
+
         totalRegisteredContracts++;
 
         emit ContractRegistered(

@@ -96,18 +96,6 @@ class TestHelpers {
         return shipmentRegistry;
     }
 
-    async deploySupplyChainManager(stakeholderAddr, productAddr, shipmentAddr) {
-        const SupplyChainManager = await ethers.getContractFactory("SupplyChainManager");
-        const supplyChainManager = await SupplyChainManager.deploy(
-            stakeholderAddr,
-            productAddr,
-            shipmentAddr
-        );
-        await supplyChainManager.waitForDeployment();
-        
-        this.deployedContracts.supplyChainManager = supplyChainManager;
-        return supplyChainManager;
-    }
 
     async deployPublicVerification(productAddr, stakeholderAddr, shipmentAddr) {
         const PublicVerification = await ethers.getContractFactory("PublicVerification");
@@ -141,15 +129,6 @@ class TestHelpers {
         return supplyChainFactory;
     }
 
-    async deploySupplyChainClient(contractRegistryAddress) {
-        const SupplyChainClient = await ethers.getContractFactory("SupplyChainClient");
-        const supplyChainClient = await SupplyChainClient.deploy(contractRegistryAddress);
-        await supplyChainClient.waitForDeployment();
-        
-        this.deployedContracts.supplyChainClient = supplyChainClient;
-        return supplyChainClient;
-    }
-
     async deployFactoryRegistry(contractRegistryAddress) {
         const FactoryRegistry = await ethers.getContractFactory("FactoryRegistry");
         const factoryRegistry = await FactoryRegistry.deploy(contractRegistryAddress);
@@ -168,11 +147,6 @@ class TestHelpers {
             await stakeholderRegistry.getAddress(),
             await productRegistry.getAddress()
         );
-        const supplyChainManager = await this.deploySupplyChainManager(
-            await stakeholderRegistry.getAddress(),
-            await productRegistry.getAddress(),
-            await shipmentRegistry.getAddress()
-        );
         const publicVerification = await this.deployPublicVerification(
             await productRegistry.getAddress(),
             await stakeholderRegistry.getAddress(),
@@ -184,7 +158,6 @@ class TestHelpers {
             stakeholderRegistry,
             productRegistry,
             shipmentRegistry,
-            supplyChainManager,
             publicVerification
         };
     }

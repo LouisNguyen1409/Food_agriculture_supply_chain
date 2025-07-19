@@ -32,11 +32,9 @@ describe("ContractRegistry", function () {
             expect(supportedTypes).to.include("StakeholderRegistry");
             expect(supportedTypes).to.include("ProductRegistry");
             expect(supportedTypes).to.include("ShipmentRegistry");
-            expect(supportedTypes).to.include("SupplyChainManager");
             expect(supportedTypes).to.include("PublicVerification");
             expect(supportedTypes).to.include("ProductFactory");
             expect(supportedTypes).to.include("ShipmentFactory");
-            expect(supportedTypes).to.include("SupplyChainFactory");
         });
 
         it("Should start with zero registered contracts", async function () {
@@ -226,7 +224,6 @@ describe("ContractRegistry", function () {
                     await systemContracts.stakeholderRegistry.getAddress(),
                     await systemContracts.productRegistry.getAddress(),
                     await systemContracts.shipmentRegistry.getAddress(),
-                    await systemContracts.supplyChainManager.getAddress(),
                     await systemContracts.publicVerification.getAddress()
                 )
             ).to.emit(contractRegistry, "SystemRegistered")
@@ -234,7 +231,6 @@ describe("ContractRegistry", function () {
                     "StakeholderRegistry",
                     "ProductRegistry",
                     "ShipmentRegistry",
-                    "SupplyChainManager",
                     "PublicVerification"
                 ]);
         });
@@ -247,7 +243,6 @@ describe("ContractRegistry", function () {
                 await systemContracts.stakeholderRegistry.getAddress(),
                 await systemContracts.productRegistry.getAddress(),
                 await systemContracts.shipmentRegistry.getAddress(),
-                await systemContracts.supplyChainManager.getAddress(),
                 await systemContracts.publicVerification.getAddress()
             );
 
@@ -265,7 +260,6 @@ describe("ContractRegistry", function () {
                 await systemContracts.stakeholderRegistry.getAddress(),
                 await systemContracts.productRegistry.getAddress(),
                 await systemContracts.shipmentRegistry.getAddress(),
-                await systemContracts.supplyChainManager.getAddress(),
                 await systemContracts.publicVerification.getAddress()
             );
 
@@ -273,8 +267,8 @@ describe("ContractRegistry", function () {
                 await contractRegistry.getSystemInfo(systemId);
 
             expect(isActive).to.be.true;
-            expect(contractTypes).to.have.lengthOf(5);
-            expect(contractAddresses).to.have.lengthOf(5);
+            expect(contractTypes).to.have.lengthOf(4); // Only 4 contracts registered
+            expect(contractAddresses).to.have.lengthOf(4);
             expect(contractTypes).to.include("ProductRegistry");
             expect(contractAddresses).to.include(await systemContracts.productRegistry.getAddress());
         });
@@ -288,7 +282,6 @@ describe("ContractRegistry", function () {
                     await systemContracts.stakeholderRegistry.getAddress(),
                     await systemContracts.productRegistry.getAddress(),
                     await systemContracts.shipmentRegistry.getAddress(),
-                    await systemContracts.supplyChainManager.getAddress(),
                     await systemContracts.publicVerification.getAddress()
                 )
             ).to.be.revertedWith("Not authorized deployer");
@@ -529,7 +522,7 @@ describe("ContractRegistry", function () {
 
             expect(totalContracts).to.equal(2);
             expect(totalSystems).to.equal(0); // Systems counting not fully implemented
-            expect(totalContractTypes).to.equal(8); // Number of supported types
+            expect(totalContractTypes).to.equal(6); // Number of supported types (reduced from 8)
         });
     });
 
@@ -584,7 +577,6 @@ describe("ContractRegistry", function () {
                 await systemContracts.stakeholderRegistry.getAddress(),
                 await systemContracts.productRegistry.getAddress(),
                 await systemContracts.shipmentRegistry.getAddress(),
-                await systemContracts.supplyChainManager.getAddress(),
                 await systemContracts.publicVerification.getAddress()
             );
             const receipt = await tx.wait();

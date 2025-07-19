@@ -8,7 +8,6 @@ describe("FactoryRegistry", function () {
     let contractRegistry;
     let productFactory;
     let shipmentFactory;
-    let supplyChainFactory;
     let accounts;
     let deployer, admin, unauthorized;
 
@@ -55,9 +54,6 @@ describe("FactoryRegistry", function () {
         );
         await shipmentFactory.waitForDeployment();
 
-        supplyChainFactory = await testHelpers.deploySupplyChainFactory(
-            await contractRegistry.getAddress()
-        );
     });
 
     describe("Deployment", function () {
@@ -248,12 +244,11 @@ describe("FactoryRegistry", function () {
         it("Should register all three common factories", async function () {
             const tx = await factoryRegistry.connect(deployer).registerCommonFactories(
                 await productFactory.getAddress(),
-                await shipmentFactory.getAddress(),
-                await supplyChainFactory.getAddress()
+                await shipmentFactory.getAddress()
             );
 
-            // Should emit three events
             const receipt = await tx.wait();
+
             const events = receipt.logs.filter(log => {
                 try {
                     const parsed = factoryRegistry.interface.parseLog(log);
@@ -262,7 +257,7 @@ describe("FactoryRegistry", function () {
                     return false;
                 }
             });
-            expect(events.length).to.equal(3);
+            expect(events.length).to.equal(2); // Only 2 factories (ProductFactory and ShipmentFactory)
 
             // Verify all factories are registered
             expect(await factoryRegistry.getFactory("ProductFactory")).to.equal(
@@ -271,16 +266,12 @@ describe("FactoryRegistry", function () {
             expect(await factoryRegistry.getFactory("ShipmentFactory")).to.equal(
                 await shipmentFactory.getAddress()
             );
-            expect(await factoryRegistry.getFactory("SupplyChainFactory")).to.equal(
-                await supplyChainFactory.getAddress()
-            );
         });
 
         it("Should register only non-zero factories", async function () {
             await factoryRegistry.connect(deployer).registerCommonFactories(
                 await productFactory.getAddress(),
                 ethers.ZeroAddress,
-                await supplyChainFactory.getAddress()
             );
 
             expect(await factoryRegistry.getFactory("ProductFactory")).to.equal(
@@ -289,15 +280,11 @@ describe("FactoryRegistry", function () {
             expect(await factoryRegistry.getFactory("ShipmentFactory")).to.equal(
                 ethers.ZeroAddress
             );
-            expect(await factoryRegistry.getFactory("SupplyChainFactory")).to.equal(
-                await supplyChainFactory.getAddress()
-            );
         });
 
         it("Should handle all zero addresses gracefully", async function () {
             await expect(
                 factoryRegistry.connect(deployer).registerCommonFactories(
-                    ethers.ZeroAddress,
                     ethers.ZeroAddress,
                     ethers.ZeroAddress
                 )
@@ -308,9 +295,6 @@ describe("FactoryRegistry", function () {
                 ethers.ZeroAddress
             );
             expect(await factoryRegistry.getFactory("ShipmentFactory")).to.equal(
-                ethers.ZeroAddress
-            );
-            expect(await factoryRegistry.getFactory("SupplyChainFactory")).to.equal(
                 ethers.ZeroAddress
             );
         });
@@ -428,8 +412,7 @@ describe("FactoryRegistry", function () {
         it("Should emit events for batch registration", async function () {
             const tx = await factoryRegistry.connect(deployer).registerCommonFactories(
                 await productFactory.getAddress(),
-                await shipmentFactory.getAddress(),
-                ethers.ZeroAddress
+                await shipmentFactory.getAddress()
             );
 
             const receipt = await tx.wait();
@@ -517,7 +500,6 @@ describe("FactoryRegistry", function () {
             const tx = await factoryRegistry.connect(deployer).registerCommonFactories(
                 await productFactory.getAddress(),
                 await shipmentFactory.getAddress(),
-                await supplyChainFactory.getAddress()
             );
 
             const receipt = await tx.wait();

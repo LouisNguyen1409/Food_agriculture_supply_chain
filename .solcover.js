@@ -1,7 +1,7 @@
 module.exports = {
     skipFiles: [
         'mock/',
-        'Oracle/'
+        'Oracle/',
     ],
     providerOptions: {
         mnemonic: process.env.MNEMONIC,

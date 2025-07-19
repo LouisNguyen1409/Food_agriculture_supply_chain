@@ -5,11 +5,25 @@ require("dotenv").config()
 
 module.exports = async ({ getNamedAccounts, deployments }) => {
     const { deploy, log } = deployments
-    const { deployer } = await getNamedAccounts()
+    let { deployer } = await getNamedAccounts()
     const chainId = network.config.chainId
 
-    log("🚀 Deploying Oracle-Integrated Supply Chain System to Polygon Amoy...")
+    log("🚀 Deploying Supply Chain System to Polygon Amoy...")
     log(`Network: ${network.name} (Chain ID: ${chainId})`)
+    
+    // Validate deployer account and provide fallback
+    if (!deployer) {
+        log("⚠️ No named deployer found, attempting to get deployer from signers...")
+        const signers = await ethers.getSigners()
+        if (signers.length === 0) {
+            throw new Error("No signers available. Please ensure PRIVATE_KEY is set in .env file and accounts are properly configured in hardhat.config.js")
+        }
+        deployer = signers[0].address
+        log(`✅ Using first signer as deployer: ${deployer}`)
+    } else {
+        log(`✅ Using named deployer: ${deployer}`)
+    }
+    
     log(`Deploying with account: ${deployer}`)
 
     // Check deployer balance
@@ -36,22 +50,7 @@ module.exports = async ({ getNamedAccounts, deployments }) => {
         waitConfirmations: network.config.blockConfirmations || 1,
     })
 
-    // 2. Deploy Oracle Manager
-    log("🎛️ Deploying Oracle Manager...")
-    const oracleManager = await deploy("OracleManager", {
-        from: deployer,
-        args: [
-            temperatureFeedAddress,
-            humidityFeedAddress,
-            rainfallFeedAddress,
-            windSpeedFeedAddress,
-            priceFeedAddress
-        ],
-        log: true,
-        waitConfirmations: network.config.blockConfirmations || 1,
-    })
-
-    // 3. Deploy Stakeholder Registry
+    // 2. Deploy Stakeholder Registry
     log("👥 Deploying Stakeholder Registry...")
     const stakeholderRegistry = await deploy("StakeholderRegistry", {
         from: deployer,
@@ -60,7 +59,7 @@ module.exports = async ({ getNamedAccounts, deployments }) => {
         waitConfirmations: network.config.blockConfirmations || 1,
     })
 
-    // 4. Deploy Product Registry
+    // 3. Deploy Product Registry
     log("🌾 Deploying Product Registry...")
     const productRegistry = await deploy("ProductRegistry", {
         from: deployer,
@@ -76,7 +75,7 @@ module.exports = async ({ getNamedAccounts, deployments }) => {
         waitConfirmations: network.config.blockConfirmations || 1,
     })
 
-    // 5. Deploy Shipment Registry
+    // 4. Deploy Shipment Registry
     log("🚚 Deploying Shipment Registry...")
     const shipmentRegistry = await deploy("ShipmentRegistry", {
         from: deployer,
@@ -88,20 +87,8 @@ module.exports = async ({ getNamedAccounts, deployments }) => {
         waitConfirmations: network.config.blockConfirmations || 1,
     })
 
-    // 6. Deploy Supply Chain Manager
-    log("📦 Deploying Supply Chain Manager...")
-    const supplyChainManager = await deploy("SupplyChainManager", {
-        from: deployer,
-        args: [
-            stakeholderRegistry.address,
-            productRegistry.address,
-            shipmentRegistry.address
-        ],
-        log: true,
-        waitConfirmations: network.config.blockConfirmations || 1,
-    })
 
-    // 7. Deploy Public Verification
+    // 5. Deploy Public Verification
     log("🔍 Deploying Public Verification...")
     const publicVerification = await deploy("PublicVerification", {
         from: deployer,
@@ -114,11 +101,27 @@ module.exports = async ({ getNamedAccounts, deployments }) => {
         waitConfirmations: network.config.blockConfirmations || 1,
     })
 
-    // 8. Deploy Supply Chain Client
-    log("📱 Deploying Supply Chain Client...")
-    const supplyChainClient = await deploy("SupplyChainClient", {
+    // 6. Deploy Product Factory
+    log("🏭 Deploying Product Factory...")
+    const productFactory = await deploy("ProductFactory", {
         from: deployer,
-        args: [contractRegistry.address],
+        args: [
+            productRegistry.address,
+            stakeholderRegistry.address
+        ],
+        log: true,
+        waitConfirmations: network.config.blockConfirmations || 1,
+    })
+
+    // 7. Deploy Shipment Factory
+    log("🚚 Deploying Shipment Factory...")
+    const shipmentFactory = await deploy("ShipmentFactory", {
+        from: deployer,
+        args: [
+            shipmentRegistry.address,
+            productRegistry.address,
+            stakeholderRegistry.address
+        ],
         log: true,
         waitConfirmations: network.config.blockConfirmations || 1,
     })
@@ -128,13 +131,6 @@ module.exports = async ({ getNamedAccounts, deployments }) => {
         log("\n🔍 Verifying contracts on PolygonScan...")
         
         await verify(contractRegistry.address, [])
-        await verify(oracleManager.address, [
-            temperatureFeedAddress,
-            humidityFeedAddress,
-            rainfallFeedAddress,
-            windSpeedFeedAddress,
-            priceFeedAddress
-        ])
         await verify(stakeholderRegistry.address, [])
         await verify(productRegistry.address, [
             stakeholderRegistry.address,
@@ -148,33 +144,38 @@ module.exports = async ({ getNamedAccounts, deployments }) => {
             stakeholderRegistry.address,
             productRegistry.address
         ])
-        await verify(supplyChainManager.address, [
-            stakeholderRegistry.address,
-            productRegistry.address,
-            shipmentRegistry.address
-        ])
+
         await verify(publicVerification.address, [
             productRegistry.address,
             shipmentRegistry.address,
             stakeholderRegistry.address
         ])
-        await verify(supplyChainClient.address, [contractRegistry.address])
+
+        await verify(productFactory.address, [
+            productRegistry.address,
+            stakeholderRegistry.address
+        ])
+
+        await verify(shipmentFactory.address, [
+            shipmentRegistry.address,
+            productRegistry.address,
+            stakeholderRegistry.address
+        ])
         
         log("✅ All contracts verified on PolygonScan!")
     }
 
     // Deployment Summary
-    log("\n🎉 Oracle-Integrated Supply Chain System Deployed Successfully!")
+    log("\n🎉 Supply Chain System Deployed Successfully!")
     log("=".repeat(80))
     log("📍 DEPLOYED CONTRACTS:")
     log(`Contract Registry:     ${contractRegistry.address}`)
-    log(`Oracle Manager:        ${oracleManager.address}`)
     log(`Stakeholder Registry:  ${stakeholderRegistry.address}`)
     log(`Product Registry:      ${productRegistry.address}`)
     log(`Shipment Registry:     ${shipmentRegistry.address}`)
-    log(`Supply Chain Manager:  ${supplyChainManager.address}`)
     log(`Public Verification:   ${publicVerification.address}`)
-    log(`Supply Chain Client:   ${supplyChainClient.address}`)
+    log(`Product Factory:       ${productFactory.address}`)
+    log(`Shipment Factory:      ${shipmentFactory.address}`)
     
     log("\n📡 ORACLE CONFIGURATION:")
     log(`Price Feed (ETH/USD):  ${priceFeedAddress} (Real Chainlink)`)
@@ -185,6 +186,8 @@ module.exports = async ({ getNamedAccounts, deployments }) => {
     log("✅ Weather data safety fallbacks integrated")
     log("✅ Complete supply chain management system")
     log("✅ Oracle-enhanced product tracking")
+    log("✅ Product templates and batch creation")
+    log("✅ Shipment templates and route optimization")
     log("✅ All contracts verified on PolygonScan")
     
     log("\n🚀 System ready for production use on Polygon Amoy!")

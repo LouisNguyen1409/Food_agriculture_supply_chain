@@ -172,7 +172,6 @@ contract ProductFactory {
         templateExists(_templateId)
         returns (uint256 productId)
     {
-        ProductTemplate memory template = productTemplates[_templateId];
 
         // Create product in registry
         productId = productRegistry.registerProduct(
