@@ -98,8 +98,8 @@ contract FileStorageManager {
 
     modifier onlyRegisteredStakeholder() {
         require(
-            stakeholderRegistry.isRegisteredStakeholder(msg.sender),
-            "Not a registered stakeholder"
+            stakeholderRegistry.isActiveStakeholder(msg.sender),
+            "Not an active stakeholder"
         );
         _;
     }

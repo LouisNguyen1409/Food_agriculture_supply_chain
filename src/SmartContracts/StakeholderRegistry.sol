@@ -112,6 +112,15 @@ contract StakeholderRegistry {
             stakeholders[_stakeholder].role == _role;
     }
 
+    /**
+     * @dev Check if address is any active stakeholder (regardless of role)
+     * @param _stakeholder Address to check
+     * @return bool True if stakeholder is active
+     */
+    function isActiveStakeholder(address _stakeholder) public view returns (bool) {
+        return stakeholders[_stakeholder].isActive;
+    }
+
     function getStakeholderInfo(
         address _stakeholder
     ) public view returns (StakeholderInfo memory) {
