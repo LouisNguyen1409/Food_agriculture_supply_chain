@@ -117,7 +117,9 @@ contract StakeholderRegistry {
      * @param _stakeholder Address to check
      * @return bool True if stakeholder is active
      */
-    function isActiveStakeholder(address _stakeholder) public view returns (bool) {
+    function isActiveStakeholder(
+        address _stakeholder
+    ) public view returns (bool) {
         return stakeholders[_stakeholder].isActive;
     }
 

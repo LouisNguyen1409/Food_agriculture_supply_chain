@@ -484,39 +484,93 @@ contract ProductRegistry {
     }
 
     /**
-     * @dev Check price conditions and emit alerts
+     * @dev Check price conditions and emit alerts using oracle data
      */
     function _checkPriceConditions(
         uint256 _productId,
         uint256 _currentPrice
     ) internal {
-        // Get previous price for comparison
+        // Skip if this is the first stage (no previous stage to compare)
         ProductStage currentStage = products[_productId].currentStage;
-        if (uint(currentStage) > 0) {
-            ProductStage prevStage = ProductStage(uint(currentStage) - 1);
-            uint256 prevPrice = productStages[_productId][prevStage]
-                .marketPriceAtStage;
+        if (uint(currentStage) == 0) {
+            return;
+        }
 
-            // Price change threshold: 10% (adjust as needed)
-            uint256 threshold = prevPrice / 10;
+        uint256 oraclePrice = _getPriceSafe();
+        uint256 prevPrice = _getPreviousStagePrice(_productId);
 
-            if (_currentPrice > prevPrice + threshold) {
-                emit PriceAlert(
-                    _productId,
-                    _currentPrice,
-                    threshold,
-                    "PRICE_INCREASE",
-                    block.timestamp
-                );
-            } else if (_currentPrice < prevPrice - threshold) {
-                emit PriceAlert(
-                    _productId,
-                    _currentPrice,
-                    threshold,
-                    "PRICE_DECREASE",
-                    block.timestamp
-                );
-            }
+        // Check oracle price changes
+        _checkOraclePriceChange(_productId, oraclePrice, prevPrice);
+
+        // Check stage vs oracle price difference
+        _checkStageOracleDifference(_productId, _currentPrice, oraclePrice);
+    }
+
+    /**
+     * @dev Get the price from the previous stage
+     */
+    function _getPreviousStagePrice(
+        uint256 _productId
+    ) internal view returns (uint256) {
+        ProductStage currentStage = products[_productId].currentStage;
+        ProductStage prevStage = ProductStage(uint(currentStage) - 1);
+        return productStages[_productId][prevStage].marketPriceAtStage;
+    }
+
+    /**
+     * @dev Check if oracle price has changed significantly from previous stage
+     */
+    function _checkOraclePriceChange(
+        uint256 _productId,
+        uint256 _oraclePrice,
+        uint256 _prevPrice
+    ) internal {
+        uint256 threshold = _prevPrice / 10; // 10% threshold
+
+        if (_oraclePrice > _prevPrice + threshold) {
+            emit PriceAlert(
+                _productId,
+                _oraclePrice,
+                threshold,
+                "ORACLE_PRICE_INCREASE",
+                block.timestamp
+            );
+        } else if (_oraclePrice < _prevPrice - threshold) {
+            emit PriceAlert(
+                _productId,
+                _oraclePrice,
+                threshold,
+                "ORACLE_PRICE_DECREASE",
+                block.timestamp
+            );
+        }
+    }
+
+    /**
+     * @dev Check if current stage price differs significantly from oracle price
+     */
+    function _checkStageOracleDifference(
+        uint256 _productId,
+        uint256 _stagePrice,
+        uint256 _oraclePrice
+    ) internal {
+        uint256 threshold = _oraclePrice / 20; // 5% threshold
+        uint256 difference = _stagePrice > _oraclePrice
+            ? _stagePrice - _oraclePrice
+            : _oraclePrice - _stagePrice;
+
+        if (difference > threshold) {
+            string memory alertType = _stagePrice > _oraclePrice
+                ? "STAGE_PRICE_ABOVE_ORACLE"
+                : "STAGE_PRICE_BELOW_ORACLE";
+
+            emit PriceAlert(
+                _productId,
+                _oraclePrice,
+                threshold,
+                alertType,
+                block.timestamp
+            );
         }
     }
 
