@@ -45,7 +45,7 @@ contract FileStorageManager {
 
     struct TransactionLog {
         uint256 requestId;
-        string action;           // "UPLOAD_REQUESTED", "S3_UPLOAD_SUCCESS", "S3_UPLOAD_FAILED"
+        string action; // "UPLOAD_REQUESTED", "S3_UPLOAD_SUCCESS", "S3_UPLOAD_FAILED"
         bool success;
         uint256 timestamp;
         string details;
@@ -92,7 +92,10 @@ contract FileStorageManager {
     );
 
     modifier onlyOracleOperator() {
-        require(msg.sender == oracleOperator, "Only oracle operator can call this");
+        require(
+            msg.sender == oracleOperator,
+            "Only oracle operator can call this"
+        );
         _;
     }
 
@@ -105,14 +108,14 @@ contract FileStorageManager {
     }
 
     modifier validRequest(uint256 _requestId) {
-        require(_requestId > 0 && _requestId < nextRequestId, "Invalid request ID");
+        require(
+            _requestId > 0 && _requestId < nextRequestId,
+            "Invalid request ID"
+        );
         _;
     }
 
-    constructor(
-        address _stakeholderRegistryAddress,
-        address _oracleOperator
-    ) {
+    constructor(address _stakeholderRegistryAddress, address _oracleOperator) {
         stakeholderRegistry = StakeholderRegistry(_stakeholderRegistryAddress);
         oracleOperator = _oracleOperator;
     }
@@ -202,7 +205,12 @@ contract FileStorageManager {
                 _requestId,
                 "S3_UPLOAD_SUCCESS",
                 true,
-                string(abi.encodePacked("File successfully uploaded to S3: ", _s3Url)),
+                string(
+                    abi.encodePacked(
+                        "File successfully uploaded to S3: ",
+                        _s3Url
+                    )
+                ),
                 msg.sender
             );
         } else {
@@ -240,14 +248,16 @@ contract FileStorageManager {
         string memory _details,
         address _actor
     ) internal {
-        transactionLogs[_requestId].push(TransactionLog({
-            requestId: _requestId,
-            action: _action,
-            success: _success,
-            timestamp: block.timestamp,
-            details: _details,
-            actor: _actor
-        }));
+        transactionLogs[_requestId].push(
+            TransactionLog({
+                requestId: _requestId,
+                action: _action,
+                success: _success,
+                timestamp: block.timestamp,
+                details: _details,
+                actor: _actor
+            })
+        );
 
         emit TransactionLogged(
             _requestId,
@@ -262,7 +272,9 @@ contract FileStorageManager {
     /**
      * @dev Get file request details
      */
-    function getFileRequest(uint256 _requestId)
+    function getFileRequest(
+        uint256 _requestId
+    )
         external
         view
         validRequest(_requestId)
@@ -274,34 +286,27 @@ contract FileStorageManager {
     /**
      * @dev Get transaction logs for a request
      */
-    function getTransactionLogs(uint256 _requestId)
-        external
-        view
-        validRequest(_requestId)
-        returns (TransactionLog[] memory)
-    {
+    function getTransactionLogs(
+        uint256 _requestId
+    ) external view validRequest(_requestId) returns (TransactionLog[] memory) {
         return transactionLogs[_requestId];
     }
 
     /**
      * @dev Get all file requests for a product
      */
-    function getProductFiles(uint256 _productId)
-        external
-        view
-        returns (uint256[] memory)
-    {
+    function getProductFiles(
+        uint256 _productId
+    ) external view returns (uint256[] memory) {
         return productFiles[_productId];
     }
 
     /**
      * @dev Get successful file URLs for a product
      */
-    function getProductFileUrls(uint256 _productId)
-        external
-        view
-        returns (string[] memory)
-    {
+    function getProductFileUrls(
+        uint256 _productId
+    ) external view returns (string[] memory) {
         uint256[] memory requestIds = productFiles[_productId];
         string[] memory urls = new string[](requestIds.length);
         uint256 count = 0;
@@ -325,18 +330,19 @@ contract FileStorageManager {
     /**
      * @dev Get files by stage for a product
      */
-    function getProductFilesByStage(uint256 _productId, ProductStage _stage)
-        external
-        view
-        returns (uint256[] memory)
-    {
+    function getProductFilesByStage(
+        uint256 _productId,
+        ProductStage _stage
+    ) external view returns (uint256[] memory) {
         uint256[] memory allRequests = productFiles[_productId];
         uint256[] memory stageRequests = new uint256[](allRequests.length);
         uint256 count = 0;
 
         for (uint256 i = 0; i < allRequests.length; i++) {
-            if (fileRequests[allRequests[i]].stage == _stage &&
-                fileRequests[allRequests[i]].status == RequestStatus.COMPLETED) {
+            if (
+                fileRequests[allRequests[i]].stage == _stage &&
+                fileRequests[allRequests[i]].status == RequestStatus.COMPLETED
+            ) {
                 stageRequests[count] = allRequests[i];
                 count++;
             }
@@ -354,24 +360,26 @@ contract FileStorageManager {
     /**
      * @dev Verify file integrity
      */
-    function verifyFileIntegrity(uint256 _requestId, bytes32 _providedHash)
-        external
-        view
-        validRequest(_requestId)
-        returns (bool)
-    {
+    function verifyFileIntegrity(
+        uint256 _requestId,
+        bytes32 _providedHash
+    ) external view validRequest(_requestId) returns (bool) {
         return fileRequests[_requestId].fileHash == _providedHash;
     }
 
     /**
      * @dev Get contract statistics
      */
-    function getStats() external view returns (
-        uint256 totalRequests,
-        uint256 completedRequests,
-        uint256 failedRequests,
-        uint256 pendingRequests
-    ) {
+    function getStats()
+        external
+        view
+        returns (
+            uint256 totalRequests,
+            uint256 completedRequests,
+            uint256 failedRequests,
+            uint256 pendingRequests
+        )
+    {
         uint256 completed = 0;
         uint256 failed = 0;
         uint256 pending = 0;
@@ -394,7 +402,10 @@ contract FileStorageManager {
      * @dev Update oracle operator (admin function)
      */
     function updateOracleOperator(address _newOperator) external {
-        require(msg.sender == oracleOperator, "Only current operator can update");
+        require(
+            msg.sender == oracleOperator,
+            "Only current operator can update"
+        );
         oracleOperator = _newOperator;
     }
 }
