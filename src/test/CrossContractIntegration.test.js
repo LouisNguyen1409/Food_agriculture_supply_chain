@@ -57,7 +57,7 @@ describe("Cross-Contract Integration Tests", function () {
                     "UNAUTH_TRACK",
                     "TRUCK"
                 )
-            ).to.be.revertedWith("Not registered for this role");
+            ).to.be.revertedWith("Not registered as distributor");
         });
 
         it("Should allow proper role-based operations across contracts", async function () {
@@ -402,7 +402,7 @@ describe("Cross-Contract Integration Tests", function () {
                     "WRONG_TRACK",
                     "TRUCK"
                 )
-            ).to.be.revertedWith("Not registered for this role");
+            ).to.be.revertedWith("Not registered as distributor");
         });
     });
 

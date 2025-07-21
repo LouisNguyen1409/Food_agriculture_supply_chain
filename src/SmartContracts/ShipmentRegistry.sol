@@ -135,6 +135,17 @@ contract ShipmentRegistry {
         _;
     }
 
+    modifier onlyRegisteredDistributor() {
+        require(
+            stakeholderRegistry.isRegisteredStakeholder(
+                msg.sender,
+                StakeholderRegistry.StakeholderRole.DISTRIBUTOR
+            ),
+            "Not registered as distributor"
+        );
+        _;
+    }
+
     constructor(
         address _stakeholderRegistryAddress,
         address _productRegistryAddress
@@ -150,9 +161,7 @@ contract ShipmentRegistry {
         string memory _transportMode
     )
         external
-        onlyRegisteredStakeholder(
-            StakeholderRegistry.StakeholderRole.DISTRIBUTOR
-        )
+        onlyRegisteredDistributor
         validProductForShipment(_productId)
         returns (uint256)
     {

@@ -167,7 +167,7 @@ describe("ShipmentRegistry", function () {
                     "TRACK001",
                     "TRUCK"
                 )
-            ).to.be.revertedWith("Not registered for this role");
+            ).to.be.revertedWith("Not registered as distributor");
         });
 
         it("Should create shipment with valid products at different stages", async function () {
