@@ -1,788 +1,686 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
+const { anyValue } = require("@nomicfoundation/hardhat-chai-matchers/withArgs");
 const { TestHelpers } = require("./helpers/testHelpers");
 
-describe("ShipmentRegistry", function () {
+describe("ShipmentRegistry Contract Tests", function () {
     let testHelpers;
-    let shipmentRegistry;
-    let productRegistry;
+    let registry;
     let stakeholderRegistry;
+    let stakeholderFactory;
+    let productFactory;
+    let shipmentFactory;
     let accounts;
     let deployer, farmer, processor, distributor, retailer, consumer, unauthorized;
-    let productId, shipmentId;
+    let oracleFeeds;
+    let productAddress;
+    let shipmentAddress;
 
     beforeEach(async function () {
         testHelpers = new TestHelpers();
         accounts = await testHelpers.setup();
         ({ deployer, farmer, processor, distributor, retailer, consumer, unauthorized } = accounts);
 
-        // Deploy dependencies
-        stakeholderRegistry = await testHelpers.deployStakeholderRegistry();
-        productRegistry = await testHelpers.deployProductRegistry(
+        // Deploy core registry first
+        const Registry = await ethers.getContractFactory("Registry");
+        registry = await Registry.deploy();
+        await registry.waitForDeployment();
+
+        // Deploy stakeholder registry
+        const StakeholderRegistry = await ethers.getContractFactory("StakeholderRegistry");
+        stakeholderRegistry = await StakeholderRegistry.deploy(await registry.getAddress());
+        await stakeholderRegistry.waitForDeployment();
+
+        // Deploy stakeholder factory
+        const StakeholderFactory = await ethers.getContractFactory("StakeholderFactory");
+        stakeholderFactory = await StakeholderFactory.deploy(await registry.getAddress());
+        await stakeholderFactory.waitForDeployment();
+
+        // Deploy mock oracle feeds
+        oracleFeeds = await testHelpers.deployMockOracleFeeds();
+
+        // Deploy product factory
+        const ProductFactory = await ethers.getContractFactory("ProductFactory");
+        productFactory = await ProductFactory.deploy(
+            await stakeholderRegistry.getAddress(),
+            await registry.getAddress(),
+            await oracleFeeds.temperatureFeed.getAddress(),
+            await oracleFeeds.humidityFeed.getAddress(),
+            await oracleFeeds.rainfallFeed.getAddress(),
+            await oracleFeeds.windSpeedFeed.getAddress(),
+            await oracleFeeds.priceFeed.getAddress()
+        );
+        await productFactory.waitForDeployment();
+
+        // Deploy shipment factory
+        const ShipmentFactory = await ethers.getContractFactory("ShipmentFactory");
+        shipmentFactory = await ShipmentFactory.deploy(
+            await registry.getAddress(),
             await stakeholderRegistry.getAddress()
         );
-        shipmentRegistry = await testHelpers.deployShipmentRegistry(
-            await stakeholderRegistry.getAddress(),
-            await productRegistry.getAddress()
-        );
+        await shipmentFactory.waitForDeployment();
 
         // Register stakeholders
-        await testHelpers.setupStakeholders(stakeholderRegistry);
+        await stakeholderFactory.connect(deployer).createStakeholder(
+            farmer.address,
+            0, // FARMER
+            "Green Valley Farm",
+            "FARM123",
+            "California, USA",
+            "Organic Certified"
+        );
 
-        // Create test product and update to PROCESSING stage
-        productId = await testHelpers.createSampleProductSimple(productRegistry, farmer);
-        await testHelpers.updateProductStage(productRegistry, processor, productId, 1, "Processed and ready for shipment");
+        await stakeholderFactory.connect(deployer).createStakeholder(
+            processor.address,
+            1, // PROCESSOR
+            "Fresh Processing Co",
+            "PROC123",
+            "Texas, USA",
+            "FDA Approved"
+        );
+
+        await stakeholderFactory.connect(deployer).createStakeholder(
+            distributor.address,
+            3, // DISTRIBUTOR
+            "Supply Chain Inc",
+            "DIST456",
+            "Los Angeles, USA",
+            "ISO 9001 Certified"
+        );
+
+        await stakeholderFactory.connect(deployer).createStakeholder(
+            retailer.address,
+            2, // RETAILER
+            "Fresh Market",
+            "RET789",
+            "New York, USA",
+            "Quality Assured"
+        );
+
+        // Create a test product
+        const tx = await productFactory.connect(farmer).createProduct(
+            "Test Product",
+            "Premium organic tomatoes",
+            2,  // minCTemperature
+            8,  // maxCTemperature
+            "Green Valley Farm, California",
+            "Organic farming practices: Planting, Watering, Harvesting"
+        );
+
+        const receipt = await tx.wait();
+        const event = receipt.logs.find(log => {
+            try {
+                return productFactory.interface.parseLog(log).name === "ProductCreated";
+            } catch {
+                return false;
+            }
+        });
+        
+        if (event) {
+            const parsedEvent = productFactory.interface.parseLog(event);
+            productAddress = parsedEvent.args.productAddress;
+        }
+
+        // Advance product to PROCESSING stage to make it eligible for shipment
+        const product = await ethers.getContractAt("Product", productAddress);
+        await product.connect(processor).updateProcessingStage("Processed and packaged");
+
+        // Create a test shipment for use in tests
+        const shipmentTx = await shipmentFactory.connect(distributor).createShipment(
+            productAddress,
+            retailer.address,
+            "TRACK123",
+            "Road Transport"
+        );
+
+        const shipmentReceipt = await shipmentTx.wait();
+        const shipmentEvent = shipmentReceipt.logs.find(log => {
+            try {
+                return shipmentFactory.interface.parseLog(log).name === "ShipmentCreated";
+            } catch {
+                return false;
+            }
+        });
+        
+        if (shipmentEvent) {
+            const parsedShipmentEvent = shipmentFactory.interface.parseLog(shipmentEvent);
+            shipmentAddress = parsedShipmentEvent.args.shipmentAddress;
+        }
     });
 
-    describe("Deployment and Initialization", function () {
-        it("Should set correct registry addresses", async function () {
-            expect(await shipmentRegistry.stakeholderRegistry()).to.equal(
-                await stakeholderRegistry.getAddress()
-            );
-            expect(await shipmentRegistry.productRegistry()).to.equal(
-                await productRegistry.getAddress()
-            );
+    describe("Registry Deployment", function () {
+        it("Should deploy registry successfully", async function () {
+            expect(await registry.getAddress()).to.not.equal(ethers.ZeroAddress);
         });
 
-        it("Should initialize with correct default values", async function () {
-            expect(await shipmentRegistry.nextShipmentId()).to.equal(1);
-            expect(await shipmentRegistry.totalShipments()).to.equal(0);
+        it("Should initialize with empty arrays", async function () {
+            const products = await registry.getAllProducts();
+            const shipments = await registry.getAllShipments();
+            const stakeholders = await registry.getAllStakeholders();
+
+            expect(products.length).to.equal(1); // One product created in beforeEach
+            expect(shipments.length).to.equal(1); // One shipment created in beforeEach
+            expect(stakeholders.length).to.equal(4); // Four stakeholders created in beforeEach
         });
     });
 
-    describe("Shipment Creation", function () {
-        it("Should create shipment successfully", async function () {
-            const tx = await shipmentRegistry.connect(distributor).createShipment(
-                productId,
+    describe("Shipment Registration", function () {
+        it("Should register shipment successfully", async function () {
+            const trackingNumber = "TRACK456";
+            const sender = distributor.address;
+            const receiver = retailer.address;
+
+            // Create another product and advance to processing stage
+            const productTx = await productFactory.connect(farmer).createProduct(
+                "Test Product 2",
+                "Premium organic carrots",
+                2,
+                8,
+                "Green Valley Farm, California",
+                "Organic farming practices"
+            );
+            
+            const productReceipt = await productTx.wait();
+            const productEvent = productReceipt.logs.find(log => {
+                try {
+                    return productFactory.interface.parseLog(log).name === "ProductCreated";
+                } catch {
+                    return false;
+                }
+            });
+            
+            const newProductAddress = productFactory.interface.parseLog(productEvent).args.productAddress;
+            const newProduct = await ethers.getContractAt("Product", newProductAddress);
+            await newProduct.connect(processor).updateProcessingStage("Processed and packaged");
+
+            // Create another shipment to test registration
+            const shipmentTx = await shipmentFactory.connect(distributor).createShipment(
+                newProductAddress,
+                receiver,
+                trackingNumber,
+                "Air Transport"
+            );
+
+            const receipt = await shipmentTx.wait();
+            const event = receipt.logs.find(log => {
+                try {
+                    return shipmentFactory.interface.parseLog(log).name === "ShipmentCreated";
+                } catch {
+                    return false;
+                }
+            });
+
+            expect(event).to.not.be.undefined;
+            const parsedEvent = shipmentFactory.interface.parseLog(event);
+            const newShipmentAddress = parsedEvent.args.shipmentAddress;
+
+            // Verify registration
+            expect(await registry.isRegistered(newShipmentAddress)).to.be.true;
+        });
+
+        it("Should emit ShipmentRegistered event", async function () {
+            const trackingNumber = "TRACK789";
+            
+            // Create another product and advance to processing stage
+            const productTx = await productFactory.connect(farmer).createProduct(
+                "Test Product 3",
+                "Premium organic lettuce",
+                2,
+                8,
+                "Green Valley Farm, California",
+                "Organic farming practices"
+            );
+            
+            const productReceipt = await productTx.wait();
+            const productEvent = productReceipt.logs.find(log => {
+                try {
+                    return productFactory.interface.parseLog(log).name === "ProductCreated";
+                } catch {
+                    return false;
+                }
+            });
+            
+            const newProductAddress = productFactory.interface.parseLog(productEvent).args.productAddress;
+            const newProduct = await ethers.getContractAt("Product", newProductAddress);
+            await newProduct.connect(processor).updateProcessingStage("Processed and packaged");
+            
+            const shipmentTx = await shipmentFactory.connect(distributor).createShipment(
+                newProductAddress,
                 retailer.address,
-                "TRACK001",
-                "TRUCK"
+                trackingNumber,
+                "Sea Transport"
             );
 
-            await expect(tx)
-                .to.emit(shipmentRegistry, "ShipmentCreated")
-                .withArgs(
-                    1, // shipmentId
-                    productId,
+            // Check for ShipmentRegistered event from registry
+            await expect(shipmentTx)
+                .to.emit(registry, "ShipmentRegistered");
+        });
+
+        it("Should not allow duplicate shipment registration", async function () {
+            // Try to register the same shipment address again directly (this would fail at contract level)
+            await expect(
+                registry.registerShipment(
+                    shipmentAddress,
+                    "TRACK123",
+                    productAddress,
                     distributor.address,
-                    retailer.address,
-                    "TRACK001",
-                    await getBlockTimestamp(tx)
+                    retailer.address
+                )
+            ).to.be.revertedWith("Shipment already registered");
+        });
+
+        it("Should increment shipment count", async function () {
+            const initialCount = await registry.getTotalShipments();
+            
+            // Create another product and advance to processing stage
+            const productTx = await productFactory.connect(farmer).createProduct(
+                "Test Product 4",
+                "Premium organic spinach",
+                2,
+                8,
+                "Green Valley Farm, California",
+                "Organic farming practices"
+            );
+            
+            const productReceipt = await productTx.wait();
+            const productEvent = productReceipt.logs.find(log => {
+                try {
+                    return productFactory.interface.parseLog(log).name === "ProductCreated";
+                } catch {
+                    return false;
+                }
+            });
+            
+            const newProductAddress = productFactory.interface.parseLog(productEvent).args.productAddress;
+            const newProduct = await ethers.getContractAt("Product", newProductAddress);
+            await newProduct.connect(processor).updateProcessingStage("Processed and packaged");
+            
+            await shipmentFactory.connect(distributor).createShipment(
+                newProductAddress,
+                retailer.address,
+                "TRACK999",
+                "Rail Transport"
+            );
+
+            const finalCount = await registry.getTotalShipments();
+            expect(finalCount).to.equal(initialCount + 1n);
+        });
+    });
+
+    describe("Shipment Retrieval", function () {
+        it("Should return all shipments", async function () {
+            const shipments = await registry.getAllShipments();
+            expect(shipments.length).to.be.greaterThan(0);
+            expect(shipments).to.include(shipmentAddress);
+        });
+
+        it("Should return correct total shipments count", async function () {
+            const count = await registry.getTotalShipments();
+            const shipments = await registry.getAllShipments();
+            expect(count).to.equal(BigInt(shipments.length));
+        });
+
+        it("Should check shipment registration status", async function () {
+            expect(await registry.isEntityRegistered(shipmentAddress)).to.be.true;
+            expect(await registry.isEntityRegistered(ethers.ZeroAddress)).to.be.false;
+        });
+    });
+
+    describe("Individual Shipment Contract Tests", function () {
+        let shipment;
+
+        beforeEach(async function () {
+            shipment = await ethers.getContractAt("Shipment", shipmentAddress);
+        });
+
+        describe("Shipment Information", function () {
+            it("Should return correct shipment info", async function () {
+                const [
+                    product,
+                    shipmentSender,
+                    shipmentReceiver,
+                    tracking,
+                    transport,
+                    currentStatus,
+                    created,
+                    updated,
+                    active
+                ] = await shipment.getShipmentInfo();
+
+                expect(product).to.equal(productAddress);
+                expect(shipmentSender).to.equal(distributor.address);
+                expect(shipmentReceiver).to.equal(retailer.address);
+                expect(tracking).to.equal("TRACK123");
+                expect(transport).to.equal("Road Transport");
+                expect(currentStatus).to.equal(1); // PREPARING
+                expect(active).to.be.true;
+            });
+
+            it("Should return status description", async function () {
+                const description = await shipment.getStatusDescription();
+                expect(description).to.equal("Preparing for shipment");
+            });
+
+            it("Should have initial history entry", async function () {
+                const history = await shipment.getShipmentHistory();
+                expect(history.length).to.equal(1);
+                expect(history[0].status).to.equal(1); // PREPARING
+                expect(history[0].updater).to.equal(distributor.address);
+            });
+        });
+
+        describe("Status Updates", function () {
+            it("Should allow distributor to update status to SHIPPED", async function () {
+                await expect(
+                    shipment.connect(distributor).updateStatus(
+                        2, // SHIPPED
+                        "Package dispatched",
+                        "Distribution Center"
+                    )
+                ).to.emit(shipment, "ShipmentStatusUpdated")
+                .withArgs(2, distributor.address, "Package dispatched", "Distribution Center", anyValue);
+
+                expect(await shipment.status()).to.equal(2); // SHIPPED
+            });
+
+            it("Should allow receiver to update status to DELIVERED", async function () {
+                // First update to SHIPPED
+                await shipment.connect(distributor).updateStatus(
+                    2, // SHIPPED
+                    "In transit",
+                    "Highway"
                 );
 
-            expect(await shipmentRegistry.totalShipments()).to.equal(1);
-            expect(await shipmentRegistry.nextShipmentId()).to.equal(2);
+                // Then update to DELIVERED
+                await expect(
+                    shipment.connect(retailer).updateStatus(
+                        3, // DELIVERED
+                        "Package delivered",
+                        "Retail Store"
+                    )
+                ).to.emit(shipment, "ShipmentDelivered")
+                .withArgs(retailer.address, anyValue);
 
-            // Check shipment info
-            const shipmentInfo = await shipmentRegistry.getShipmentInfo(1);
-            expect(shipmentInfo.productId).to.equal(productId);
-            expect(shipmentInfo.sender).to.equal(distributor.address);
-            expect(shipmentInfo.receiver).to.equal(retailer.address);
-            expect(shipmentInfo.trackingNumber).to.equal("TRACK001");
-            expect(shipmentInfo.transportMode).to.equal("TRUCK");
-            expect(shipmentInfo.status).to.equal(1); // PREPARING
+                expect(await shipment.status()).to.equal(3); // DELIVERED
+            });
+
+            it("Should not allow invalid status transitions", async function () {
+                // Try to jump from PREPARING to DELIVERED
+                await expect(
+                    shipment.connect(distributor).updateStatus(
+                        3, // DELIVERED
+                        "Invalid transition",
+                        "Nowhere"
+                    )
+                ).to.be.revertedWith("Invalid shipment status transition");
+            });
+
+            it("Should not allow unauthorized users to update status", async function () {
+                await expect(
+                    shipment.connect(unauthorized).updateStatus(
+                        2, // SHIPPED
+                        "Unauthorized update",
+                        "Unknown"
+                    )
+                ).to.be.revertedWith("Not authorized for this shipment");
+            });
         });
 
-        it("Should fail with invalid receiver address", async function () {
-            await expect(
-                shipmentRegistry.connect(distributor).createShipment(
-                    productId,
-                    ethers.ZeroAddress, // invalid receiver
-                    "TRACK001",
-                    "TRUCK"
-                )
-            ).to.be.revertedWith("Invalid receiver address");
-        });
-
-        it("Should fail with empty tracking number", async function () {
-            await expect(
-                shipmentRegistry.connect(distributor).createShipment(
-                    productId,
+        describe("Shipment Cancellation", function () {
+            it("Should allow cancellation during PREPARING status", async function () {
+                // Create a new shipment for this test
+                const newShipmentTx = await shipmentFactory.connect(distributor).createShipment(
+                    productAddress,
                     retailer.address,
-                    "", // empty tracking number
-                    "TRUCK"
+                    "CANCEL_TEST_1",
+                    "Test Transport"
+                );
+
+                const receipt = await newShipmentTx.wait();
+                const event = receipt.logs.find(log => {
+                    try {
+                        return shipmentFactory.interface.parseLog(log).name === "ShipmentCreated";
+                    } catch {
+                        return false;
+                    }
+                });
+
+                const newShipmentAddress = shipmentFactory.interface.parseLog(event).args.shipmentAddress;
+                const newShipment = await ethers.getContractAt("Shipment", newShipmentAddress);
+
+                await expect(
+                    newShipment.connect(distributor).cancel("Order cancelled by customer")
+                ).to.emit(newShipment, "ShipmentCancelled")
+                .withArgs("Order cancelled by customer", anyValue);
+
+                expect(await newShipment.status()).to.equal(4); // CANCELLED
+            });
+
+            it("Should not allow cancellation during SHIPPED status due to transition validation", async function () {
+                // Create a new shipment for this test
+                const newShipmentTx = await shipmentFactory.connect(distributor).createShipment(
+                    productAddress,
+                    retailer.address,
+                    "CANCEL_TEST_2",
+                    "Test Transport"
+                );
+
+                const receipt = await newShipmentTx.wait();
+                const event = receipt.logs.find(log => {
+                    try {
+                        return shipmentFactory.interface.parseLog(log).name === "ShipmentCreated";
+                    } catch {
+                        return false;
+                    }
+                });
+
+                const newShipmentAddress = shipmentFactory.interface.parseLog(event).args.shipmentAddress;
+                const newShipment = await ethers.getContractAt("Shipment", newShipmentAddress);
+
+                // First update to SHIPPED
+                await newShipment.connect(distributor).updateStatus(
+                    2, // SHIPPED
+                    "In transit",
+                    "Highway"
+                );
+
+                // Try to cancel - this should fail due to transition validation
+                await expect(
+                    newShipment.connect(distributor).cancel("Transport vehicle breakdown")
+                ).to.be.revertedWith("Invalid shipment status transition");
+            });
+
+            it("Should not allow cancellation after delivery", async function () {
+                // Create a new shipment for this test
+                const newShipmentTx = await shipmentFactory.connect(distributor).createShipment(
+                    productAddress,
+                    retailer.address,
+                    "CANCEL_TEST_3",
+                    "Test Transport"
+                );
+
+                const receipt = await newShipmentTx.wait();
+                const event = receipt.logs.find(log => {
+                    try {
+                        return shipmentFactory.interface.parseLog(log).name === "ShipmentCreated";
+                    } catch {
+                        return false;
+                    }
+                });
+
+                const newShipmentAddress = shipmentFactory.interface.parseLog(event).args.shipmentAddress;
+                const newShipment = await ethers.getContractAt("Shipment", newShipmentAddress);
+
+                // Update to SHIPPED then DELIVERED
+                await newShipment.connect(distributor).updateStatus(2, "In transit", "Highway");
+                await newShipment.connect(retailer).updateStatus(3, "Delivered", "Store");
+
+                await expect(
+                    newShipment.connect(distributor).cancel("Too late to cancel")
+                ).to.be.revertedWith("Cannot cancel shipment in current status");
+            });
+        });
+
+        describe("Delivery Verification", function () {
+            it("Should allow receiver to verify delivery", async function () {
+                // Update to SHIPPED then DELIVERED
+                await shipment.connect(distributor).updateStatus(2, "In transit", "Highway");
+                await shipment.connect(retailer).updateStatus(3, "Delivered", "Store");
+
+                await expect(
+                    shipment.connect(retailer).verifyDelivery()
+                ).to.emit(shipment, "ShipmentStatusUpdated")
+                .withArgs(6, retailer.address, "Delivery verified by receiver", "", anyValue);
+
+                expect(await shipment.status()).to.equal(6); // VERIFIED
+            });
+
+            it("Should not allow verification before delivery", async function () {
+                await expect(
+                    shipment.connect(retailer).verifyDelivery()
+                ).to.be.revertedWith("Shipment must be delivered first");
+            });
+
+            it("Should not allow non-receiver to verify delivery", async function () {
+                // Update to DELIVERED
+                await shipment.connect(distributor).updateStatus(2, "In transit", "Highway");
+                await shipment.connect(retailer).updateStatus(3, "Delivered", "Store");
+
+                await expect(
+                    shipment.connect(distributor).verifyDelivery()
+                ).to.be.revertedWith("Only receiver can verify delivery");
+            });
+        });
+
+        describe("Shipment History", function () {
+            it("Should maintain complete history", async function () {
+                // Add multiple status updates
+                await shipment.connect(distributor).updateStatus(2, "Shipped", "Warehouse");
+                await shipment.connect(retailer).updateStatus(3, "Delivered", "Store");
+                await shipment.connect(retailer).verifyDelivery();
+
+                const history = await shipment.getShipmentHistory();
+                expect(history.length).to.equal(4); // Initial + 3 updates
+
+                // Check progression
+                expect(history[0].status).to.equal(1); // PREPARING
+                expect(history[1].status).to.equal(2); // SHIPPED
+                expect(history[2].status).to.equal(3); // DELIVERED
+                expect(history[3].status).to.equal(6); // VERIFIED
+            });
+
+            it("Should return latest update", async function () {
+                await shipment.connect(distributor).updateStatus(
+                    2, 
+                    "Latest update", 
+                    "Current location"
+                );
+
+                const latest = await shipment.getLatestUpdate();
+                expect(latest.status).to.equal(2);
+                expect(latest.trackingInfo).to.equal("Latest update");
+                expect(latest.location).to.equal("Current location");
+                expect(latest.updater).to.equal(distributor.address);
+            });
+        });
+    });
+
+    describe("Error Handling", function () {
+        it("Should handle empty tracking numbers", async function () {
+            // This would be validated at the Shipment contract level
+            await expect(
+                shipmentFactory.connect(distributor).createShipment(
+                    productAddress,
+                    retailer.address,
+                    "", // Empty tracking number
+                    "Transport"
                 )
             ).to.be.revertedWith("Tracking number cannot be empty");
         });
+    });
 
-        it("Should fail with duplicate tracking number", async function () {
-            await shipmentRegistry.connect(distributor).createShipment(
-                productId,
+    describe("Integration Tests", function () {
+        it("Should handle multiple shipments for same product", async function () {
+            const initialCount = await registry.getTotalShipments();
+
+            // Create multiple shipments for the same product (already at processing stage)
+            await shipmentFactory.connect(distributor).createShipment(
+                productAddress,
                 retailer.address,
                 "TRACK001",
-                "TRUCK"
+                "Air"
             );
 
-            // Create another product
-            const productId2 = await testHelpers.createSampleProductSimple(productRegistry, farmer);
-            await testHelpers.updateProductStage(productRegistry, processor, productId2, 1, "Processed");
-
-            await expect(
-                shipmentRegistry.connect(distributor).createShipment(
-                    productId2,
-                    retailer.address,
-                    "TRACK001", // duplicate tracking number
-                    "TRUCK"
-                )
-            ).to.be.revertedWith("Tracking number already exists");
-        });
-
-        it("Should fail with product not ready for shipment", async function () {
-            const farmProductId = await testHelpers.createSampleProductSimple(productRegistry, farmer);
-            // Don't update to processing stage
-
-            await expect(
-                shipmentRegistry.connect(distributor).createShipment(
-                    farmProductId,
-                    retailer.address,
-                    "TRACK002",
-                    "TRUCK"
-                )
-            ).to.be.revertedWith("Product not ready for shipment");
-        });
-
-        it("Should fail with product already having active shipment", async function () {
-            await shipmentRegistry.connect(distributor).createShipment(
-                productId,
+            await shipmentFactory.connect(distributor).createShipment(
+                productAddress,
                 retailer.address,
-                "TRACK001",
-                "TRUCK"
-            );
-
-            await expect(
-                shipmentRegistry.connect(distributor).createShipment(
-                    productId, // same product
-                    retailer.address,
-                    "TRACK002",
-                    "TRUCK"
-                )
-            ).to.be.revertedWith("Product already has an active shipment");
-        });
-
-        it("Should fail if not registered as distributor", async function () {
-            await expect(
-                shipmentRegistry.connect(unauthorized).createShipment(
-                    productId,
-                    retailer.address,
-                    "TRACK001",
-                    "TRUCK"
-                )
-            ).to.be.revertedWith("Not registered as distributor");
-        });
-
-        it("Should create shipment with valid products at different stages", async function () {
-            // Test with DISTRIBUTION stage product
-            await testHelpers.updateProductStage(productRegistry, distributor, productId, 2, "Distributed");
-            
-            const tx = await shipmentRegistry.connect(distributor).createShipment(
-                productId,
-                retailer.address,
-                "TRACK001",
-                "VAN"
-            );
-
-            await expect(tx).to.emit(shipmentRegistry, "ShipmentCreated");
-
-            // Test with RETAIL stage product
-            const productId2 = await testHelpers.createSampleProductSimple(productRegistry, farmer);
-            await testHelpers.updateProductStage(productRegistry, processor, productId2, 1, "Processed");
-            await testHelpers.updateProductStage(productRegistry, distributor, productId2, 2, "Distributed");
-            await testHelpers.updateProductStage(productRegistry, retailer, productId2, 3, "At retail");
-
-            const retailProductId = await testHelpers.createSampleProductSimple(productRegistry, farmer);
-            await testHelpers.updateProductStage(productRegistry, processor, retailProductId, 1, "Processed");
-            await testHelpers.updateProductStage(productRegistry, distributor, retailProductId, 2, "Distributed");
-            await testHelpers.updateProductStage(productRegistry, retailer, retailProductId, 3, "At retail");
-
-            const tx2 = await shipmentRegistry.connect(distributor).createShipment(
-                retailProductId,
-                consumer.address,
                 "TRACK002",
-                "BIKE"
+                "Sea"
             );
 
-            await expect(tx2).to.emit(shipmentRegistry, "ShipmentCreated");
-        });
-    });
+            const finalCount = await registry.getTotalShipments();
+            expect(finalCount).to.equal(initialCount + 2n);
 
-    describe("Shipment Status Updates", function () {
-        beforeEach(async function () {
-            await shipmentRegistry.connect(distributor).createShipment(
-                productId,
-                retailer.address,
-                "TRACK001",
-                "TRUCK"
-            );
-            shipmentId = 1;
+            const allShipments = await registry.getAllShipments();
+            expect(allShipments.length).to.equal(Number(finalCount));
         });
 
-        it("Should update shipment status successfully", async function () {
-            const tx = await shipmentRegistry.connect(distributor).updateShipmentStatus(
-                shipmentId,
-                2, // SHIPPED
-                "Package dispatched from warehouse",
-                "Distribution Center"
-            );
-
-            await expect(tx)
-                .to.emit(shipmentRegistry, "ShipmentStatusUpdated")
-                .withArgs(
-                    shipmentId,
-                    productId,
-                    2, // SHIPPED
-                    distributor.address,
-                    "Package dispatched from warehouse",
-                    await getBlockTimestamp(tx)
-                );
-
-            const shipmentInfo = await shipmentRegistry.getShipmentInfo(shipmentId);
-            expect(shipmentInfo.status).to.equal(2); // SHIPPED
-        });
-
-        it("Should update to delivered status and emit delivery event", async function () {
-            // First ship
-            await shipmentRegistry.connect(distributor).updateShipmentStatus(
-                shipmentId,
-                2, // SHIPPED
-                "In transit",
-                "Highway"
-            );
-
-            // Then deliver
-            const tx = await shipmentRegistry.connect(retailer).updateShipmentStatus(
-                shipmentId,
-                3, // DELIVERED
-                "Package received at store",
-                "Retail Store"
-            );
-
-            await expect(tx)
-                .to.emit(shipmentRegistry, "ShipmentDelivered")
-                .withArgs(shipmentId, productId, retailer.address, await getBlockTimestamp(tx));
-        });
-
-        it("Should update to verified status", async function () {
-            // Update through statuses: PREPARING -> SHIPPED -> DELIVERED -> VERIFIED
-            await shipmentRegistry.connect(distributor).updateShipmentStatus(shipmentId, 2, "Shipped", "Transit");
-            await shipmentRegistry.connect(retailer).updateShipmentStatus(shipmentId, 3, "Delivered", "Store");
-            
-            const tx = await shipmentRegistry.connect(retailer).updateShipmentStatus(
-                shipmentId,
-                6, // VERIFIED
-                "Delivery confirmed and verified",
-                "Store Inventory"
-            );
-
-            await expect(tx).to.emit(shipmentRegistry, "ShipmentStatusUpdated");
-            
-            const shipmentInfo = await shipmentRegistry.getShipmentInfo(shipmentId);
-            expect(shipmentInfo.status).to.equal(6); // VERIFIED
-        });
-
-        it("Should use simple status update with default tracking info", async function () {
-            const tx = await shipmentRegistry.connect(distributor).updateShipmentStatusSimple(
-                shipmentId,
-                2 // SHIPPED
-            );
-
-            await expect(tx).to.emit(shipmentRegistry, "ShipmentStatusUpdated");
-
-            const history = await shipmentRegistry.getShipmentHistory(shipmentId);
-            expect(history[history.length - 1].trackingInfo).to.equal("Shipment dispatched");
-        });
-
-        it("Should fail with invalid status transition", async function () {
-            // Try to go directly from PREPARING to DELIVERED
-            await expect(
-                shipmentRegistry.connect(distributor).updateShipmentStatus(
-                    shipmentId,
-                    3, // DELIVERED
-                    "Invalid jump to delivered",
-                    "Store"
-                )
-            ).to.be.revertedWith("Invalid shipment status transition");
-        });
-
-        it("Should fail if not shipment participant", async function () {
-            await expect(
-                shipmentRegistry.connect(unauthorized).updateShipmentStatus(
-                    shipmentId,
-                    2, // SHIPPED
-                    "Unauthorized update",
-                    "Location"
-                )
-            ).to.be.revertedWith("Not authorized for this shipment");
-        });
-
-        it("Should fail on non-existent shipment", async function () {
-            await expect(
-                shipmentRegistry.connect(distributor).updateShipmentStatus(
-                    999, // non-existent
-                    2,
-                    "Update",
-                    "Location"
-                )
-            ).to.be.revertedWith("Shipment does not exist");
-        });
-
-        it("Should handle UNABLE_TO_DELIVERED status", async function () {
-            // Ship first
-            await shipmentRegistry.connect(distributor).updateShipmentStatus(shipmentId, 2, "Shipped", "Transit");
-            
-            // Mark as unable to deliver
-            const tx = await shipmentRegistry.connect(distributor).updateShipmentStatus(
-                shipmentId,
-                5, // UNABLE_TO_DELIVERED
-                "Customer not available, returning to depot",
-                "Customer Address"
-            );
-
-            await expect(tx).to.emit(shipmentRegistry, "ShipmentStatusUpdated");
-            
-            const shipmentInfo = await shipmentRegistry.getShipmentInfo(shipmentId);
-            expect(shipmentInfo.status).to.equal(5); // UNABLE_TO_DELIVERED
-        });
-    });
-
-    describe("Shipment Cancellation", function () {
-        beforeEach(async function () {
-            await shipmentRegistry.connect(distributor).createShipment(
-                productId,
-                retailer.address,
-                "TRACK001",
-                "TRUCK"
-            );
-            shipmentId = 1;
-        });
-
-        it("Should cancel shipment in PREPARING status", async function () {
-            const tx = await shipmentRegistry.connect(distributor).cancelShipment(
-                shipmentId,
-                "Order cancelled by customer"
-            );
-
-            await expect(tx)
-                .to.emit(shipmentRegistry, "ShipmentCancelled")
-                .withArgs(shipmentId, productId, "Order cancelled by customer", await getBlockTimestamp(tx));
-
-            const shipmentInfo = await shipmentRegistry.getShipmentInfo(shipmentId);
-            expect(shipmentInfo.status).to.equal(4); // CANCELLED
-        });
-
-        it("Should cancel shipment in SHIPPED status", async function () {
-            // Update to shipped status first
-            await shipmentRegistry.connect(distributor).updateShipmentStatus(
-                shipmentId,
-                2, // SHIPPED
-                "In transit",
-                "Highway"
-            );
-
-            // Then try to cancel - this fails due to contract logic inconsistency
-            // The cancelShipment function allows SHIPPED status but _isValidShipmentTransition doesn't
-            await expect(
-                shipmentRegistry.connect(distributor).cancelShipment(
-                    shipmentId,
-                    "Emergency recall"
-                )
-            ).to.be.revertedWith("Invalid shipment status transition");
-        });
-
-        it("Should fail cancelling delivered shipment", async function () {
-            // Ship and deliver
-            await shipmentRegistry.connect(distributor).updateShipmentStatus(shipmentId, 2, "Shipped", "Transit");
-            await shipmentRegistry.connect(retailer).updateShipmentStatus(shipmentId, 3, "Delivered", "Store");
-
-            await expect(
-                shipmentRegistry.connect(distributor).cancelShipment(
-                    shipmentId,
-                    "Too late to cancel"
-                )
-            ).to.be.revertedWith("Cannot cancel shipment in current status");
-        });
-
-        it("Should fail cancelling already cancelled shipment", async function () {
-            // Cancel first
-            await shipmentRegistry.connect(distributor).cancelShipment(shipmentId, "First cancellation");
-
-            // Try to cancel again
-            await expect(
-                shipmentRegistry.connect(distributor).cancelShipment(
-                    shipmentId,
-                    "Second cancellation"
-                )
-            ).to.be.revertedWith("Cannot cancel shipment in current status");
-        });
-    });
-
-    describe("Tracking and Query Functions", function () {
-        beforeEach(async function () {
-            await shipmentRegistry.connect(distributor).createShipment(
-                productId,
-                retailer.address,
-                "TRACK001",
-                "TRUCK"
-            );
-            shipmentId = 1;
-        });
-
-        it("Should track shipment by tracking number", async function () {
-            const [trackedShipmentId, trackedProductId, status, statusDescription, latestUpdate] = 
-                await shipmentRegistry.trackShipment("TRACK001");
-
-            expect(trackedShipmentId).to.equal(shipmentId);
-            expect(trackedProductId).to.equal(productId);
-            expect(status).to.equal(1); // PREPARING
-            expect(statusDescription).to.equal("Preparing for shipment");
-        });
-
-        it("Should fail tracking with invalid tracking number", async function () {
-            await expect(
-                shipmentRegistry.trackShipment("INVALID_TRACK")
-            ).to.be.revertedWith("Invalid tracking number");
-        });
-
-        it("Should get shipment details", async function () {
-            const [productIds, sender, receiver, status, createdAt, trackingInfo, transportMode] = 
-                await shipmentRegistry.getShipment(shipmentId);
-
-            expect(productIds[0]).to.equal(productId);
-            expect(sender).to.equal(distributor.address);
-            expect(receiver).to.equal(retailer.address);
-            expect(status).to.equal(1); // PREPARING
-            expect(transportMode).to.equal("TRUCK");
-        });
-
-        it("Should get shipment by product", async function () {
-            const foundShipmentId = await shipmentRegistry.getShipmentByProduct(productId);
-            expect(foundShipmentId).to.equal(shipmentId);
-        });
-
-        it("Should get shipment history", async function () {
-            // Update status to create history
-            await shipmentRegistry.connect(distributor).updateShipmentStatus(
-                shipmentId,
+        it("Should handle shipment lifecycle end-to-end", async function () {
+            // Create new product and advance to processing stage
+            const productTx = await productFactory.connect(farmer).createProduct(
+                "E2E Test Product",
+                "End-to-end test product",
                 2,
-                "Shipped out",
-                "Warehouse"
+                8,
+                "Green Valley Farm, California",
+                "E2E test farming practices"
             );
-
-            const history = await shipmentRegistry.getShipmentHistory(shipmentId);
-            expect(history.length).to.equal(2); // Creation + update
-            expect(history[0].status).to.equal(1); // PREPARING
-            expect(history[1].status).to.equal(2); // SHIPPED
-        });
-
-        it("Should get stakeholder shipments", async function () {
-            const distributorShipments = await shipmentRegistry.getStakeholderShipments(distributor.address);
-            expect(distributorShipments.map(Number)).to.include(Number(shipmentId));
-
-            const retailerShipments = await shipmentRegistry.getStakeholderShipments(retailer.address);
-            expect(retailerShipments.map(Number)).to.include(Number(shipmentId));
-        });
-
-        it("Should get shipment by tracking number", async function () {
-            const foundShipmentId = await shipmentRegistry.getShipmentByTrackingNumber("TRACK001");
-            expect(foundShipmentId).to.equal(shipmentId);
-        });
-
-        it("Should return zero for invalid tracking number lookup", async function () {
-            const foundShipmentId = await shipmentRegistry.getShipmentByTrackingNumber("INVALID123");
-            expect(foundShipmentId).to.equal(0);
-        });
-
-        it("Should get shipments by status", async function () {
-            // Create multiple shipments with different statuses
-            const productId2 = await testHelpers.createSampleProductSimple(productRegistry, farmer);
-            await testHelpers.updateProductStage(productRegistry, processor, productId2, 1, "Processed");
             
-            await shipmentRegistry.connect(distributor).createShipment(
-                productId2,
+            const productReceipt = await productTx.wait();
+            const productEvent = productReceipt.logs.find(log => {
+                try {
+                    return productFactory.interface.parseLog(log).name === "ProductCreated";
+                } catch {
+                    return false;
+                }
+            });
+            
+            const e2eProductAddress = productFactory.interface.parseLog(productEvent).args.productAddress;
+            const e2eProduct = await ethers.getContractAt("Product", e2eProductAddress);
+            await e2eProduct.connect(processor).updateProcessingStage("Processed for E2E test");
+
+            // Create new shipment
+            const tx = await shipmentFactory.connect(distributor).createShipment(
+                e2eProductAddress,
                 retailer.address,
-                "TRACK002",
-                "VAN"
+                "E2E_TRACK",
+                "End-to-End Test"
             );
+
+            const receipt = await tx.wait();
+            const event = receipt.logs.find(log => {
+                try {
+                    return shipmentFactory.interface.parseLog(log).name === "ShipmentCreated";
+                } catch {
+                    return false;
+                }
+            });
+
+            const e2eShipmentAddress = shipmentFactory.interface.parseLog(event).args.shipmentAddress;
+            const e2eShipment = await ethers.getContractAt("Shipment", e2eShipmentAddress);
+
+            // Complete lifecycle
+            await e2eShipment.connect(distributor).updateStatus(2, "Shipped out", "Warehouse");
+            await e2eShipment.connect(retailer).updateStatus(3, "Received", "Store");
+            await e2eShipment.connect(retailer).verifyDelivery();
+
+            // Verify final state
+            expect(await e2eShipment.status()).to.equal(6); // VERIFIED
+            const history = await e2eShipment.getShipmentHistory();
+            expect(history.length).to.equal(4);
             
-            // Update first shipment to SHIPPED
-            await shipmentRegistry.connect(distributor).updateShipmentStatus(1, 2, "Shipped", "Transit");
-            
-            // Check PREPARING status shipments (should have shipment 2)
-            const preparingShipments = await shipmentRegistry.getShipmentsByStatus(1); // PREPARING
-            expect(preparingShipments.map(Number)).to.include(2);
-            expect(preparingShipments.map(Number)).to.not.include(1);
-            
-            // Check SHIPPED status shipments (should have shipment 1)
-            const shippedShipments = await shipmentRegistry.getShipmentsByStatus(2); // SHIPPED
-            expect(shippedShipments.map(Number)).to.include(1);
-            expect(shippedShipments.map(Number)).to.not.include(2);
+            // Verify registration
+            expect(await registry.isRegistered(e2eShipmentAddress)).to.be.true;
         });
     });
-
-    describe("Statistics Functions", function () {
-        beforeEach(async function () {
-            // Create multiple shipments with different statuses
-            await shipmentRegistry.connect(distributor).createShipment(
-                productId,
-                retailer.address,
-                "TRACK001",
-                "TRUCK"
-            );
-
-            const productId2 = await testHelpers.createSampleProductSimple(productRegistry, farmer);
-            await testHelpers.updateProductStage(productRegistry, processor, productId2, 1, "Processed");
-            await shipmentRegistry.connect(distributor).createShipment(
-                productId2,
-                retailer.address,
-                "TRACK002",
-                "VAN"
-            );
-        });
-
-        it("Should get shipment statistics", async function () {
-            // Update shipments to different statuses
-            await shipmentRegistry.connect(distributor).updateShipmentStatus(1, 2, "Shipped", "Transit"); // SHIPPED
-            await shipmentRegistry.connect(distributor).updateShipmentStatus(2, 4, "Cancelled", ""); // CANCELLED
-
-            const [total, preparing, shipped, delivered, verified, cancelled] = 
-                await shipmentRegistry.getShipmentStats();
-
-            expect(total).to.equal(2);
-            expect(preparing).to.equal(0);
-            expect(shipped).to.equal(1);
-            expect(delivered).to.equal(0);
-            expect(verified).to.equal(0);
-            expect(cancelled).to.equal(1);
-        });
-
-        it("Should get total shipments count", async function () {
-            expect(await shipmentRegistry.getTotalShipments()).to.equal(2);
-        });
-
-        it("Should get next shipment ID", async function () {
-            expect(await shipmentRegistry.getNextShipmentId()).to.equal(3);
-        });
-    });
-
-    describe("Status Transitions and Validation", function () {
-        beforeEach(async function () {
-            await shipmentRegistry.connect(distributor).createShipment(
-                productId,
-                retailer.address,
-                "TRACK001",
-                "TRUCK"
-            );
-            shipmentId = 1;
-        });
-
-        it("Should allow valid status progressions", async function () {
-            // PREPARING -> SHIPPED
-            await shipmentRegistry.connect(distributor).updateShipmentStatus(shipmentId, 2, "Shipped", "Transit");
-            
-            // SHIPPED -> DELIVERED
-            await shipmentRegistry.connect(retailer).updateShipmentStatus(shipmentId, 3, "Delivered", "Store");
-            
-            // DELIVERED -> VERIFIED
-            await shipmentRegistry.connect(retailer).updateShipmentStatus(shipmentId, 6, "Verified", "Confirmed");
-
-            const shipmentInfo = await shipmentRegistry.getShipmentInfo(shipmentId);
-            expect(shipmentInfo.status).to.equal(6); // VERIFIED
-        });
-
-        it("Should allow cancellation from valid states", async function () {
-            // From PREPARING
-            await shipmentRegistry.connect(distributor).cancelShipment(shipmentId, "Cancel from preparing");
-            
-            expect((await shipmentRegistry.getShipmentInfo(shipmentId)).status).to.equal(4); // CANCELLED
-        });
-
-        it("Should reject invalid transitions", async function () {
-            // PREPARING -> VERIFIED (invalid)
-            await expect(
-                shipmentRegistry.connect(distributor).updateShipmentStatus(shipmentId, 6, "Invalid", "Location")
-            ).to.be.revertedWith("Invalid shipment status transition");
-
-            // Ship first, then try invalid transition
-            await shipmentRegistry.connect(distributor).updateShipmentStatus(shipmentId, 2, "Shipped", "Transit");
-            
-            // SHIPPED -> PREPARING (invalid backward transition)
-            await expect(
-                shipmentRegistry.connect(distributor).updateShipmentStatus(shipmentId, 1, "Invalid", "Location")
-            ).to.be.revertedWith("Invalid shipment status transition");
-        });
-
-        it("Should handle all status transition descriptions correctly", async function () {
-            // Test all status descriptions
-            const [, , , description1] = await shipmentRegistry.trackShipment("TRACK001");
-            expect(description1).to.equal("Preparing for shipment");
-
-            await shipmentRegistry.connect(distributor).updateShipmentStatus(shipmentId, 2, "Shipped", "Transit");
-            const [, , , description2] = await shipmentRegistry.trackShipment("TRACK001");
-            expect(description2).to.equal("In transit");
-
-            await shipmentRegistry.connect(retailer).updateShipmentStatus(shipmentId, 3, "Delivered", "Store");
-            const [, , , description3] = await shipmentRegistry.trackShipment("TRACK001");
-            expect(description3).to.equal("Delivered");
-
-            await shipmentRegistry.connect(retailer).updateShipmentStatus(shipmentId, 6, "Verified", "Confirmed");
-            const [, , , description4] = await shipmentRegistry.trackShipment("TRACK001");
-            expect(description4).to.equal("Delivery confirmed");
-        });
-
-        it("Should use correct default tracking info for simple updates", async function () {
-            await shipmentRegistry.connect(distributor).updateShipmentStatusSimple(shipmentId, 2); // SHIPPED
-            const history = await shipmentRegistry.getShipmentHistory(shipmentId);
-            expect(history[history.length - 1].trackingInfo).to.equal("Shipment dispatched");
-
-            await shipmentRegistry.connect(retailer).updateShipmentStatusSimple(shipmentId, 3); // DELIVERED
-            const history2 = await shipmentRegistry.getShipmentHistory(shipmentId);
-            expect(history2[history2.length - 1].trackingInfo).to.equal("Shipment delivered");
-
-            await shipmentRegistry.connect(retailer).updateShipmentStatusSimple(shipmentId, 6); // VERIFIED
-            const history3 = await shipmentRegistry.getShipmentHistory(shipmentId);
-            expect(history3[history3.length - 1].trackingInfo).to.equal("Delivery verified");
-        });
-    });
-
-    describe("Edge Cases and Error Handling", function () {
-        it("Should handle empty shipment history gracefully", async function () {
-            // Create shipment
-            await shipmentRegistry.connect(distributor).createShipment(
-                productId,
-                retailer.address,
-                "TRACK001",
-                "TRUCK"
-            );
-
-            // Get shipment details (should handle empty additional history)
-            const [productIds, sender, receiver, status, createdAt, trackingInfo, transportMode] = 
-                await shipmentRegistry.getShipment(1);
-
-            expect(trackingInfo).to.equal("Shipment created and preparing");
-        });
-
-        it("Should fail operations on non-existent shipments", async function () {
-            await expect(
-                shipmentRegistry.getShipmentInfo(999)
-            ).to.be.revertedWith("Shipment does not exist");
-
-            await expect(
-                shipmentRegistry.getShipment(999)
-            ).to.be.revertedWith("Shipment does not exist");
-        });
-
-        it("Should return zero for non-existent product shipment", async function () {
-            const shipmentId = await shipmentRegistry.getShipmentByProduct(999);
-            expect(shipmentId).to.equal(0);
-        });
-
-        it("Should handle shipment for product without active shipment", async function () {
-            const productId2 = await testHelpers.createSampleProductSimple(productRegistry, farmer);
-            const shipmentId = await shipmentRegistry.getShipmentByProduct(productId2);
-            expect(shipmentId).to.equal(0);
-        });
-
-        it("Should handle empty arrays for new stakeholders", async function () {
-            const newStakeholder = accounts.consumer;
-            const shipments = await shipmentRegistry.getStakeholderShipments(newStakeholder.address);
-            expect(shipments).to.have.length(0);
-        });
-
-        it("Should handle shipments by status with no results", async function () {
-            // Query for VERIFIED status when no shipments are verified
-            const verifiedShipments = await shipmentRegistry.getShipmentsByStatus(6); // VERIFIED
-            expect(verifiedShipments).to.have.length(0);
-        });
-
-        it("Should handle tracking number edge cases", async function () {
-            // Create shipment
-            await shipmentRegistry.connect(distributor).createShipment(
-                productId,
-                retailer.address,
-                "TRACK001",
-                "TRUCK"
-            );
-
-            // Valid tracking number
-            const validResult = await shipmentRegistry.getShipmentByTrackingNumber("TRACK001");
-            expect(validResult).to.equal(1);
-
-            // Invalid tracking number should return 0
-            const invalidResult = await shipmentRegistry.getShipmentByTrackingNumber("INVALID123");
-            expect(invalidResult).to.equal(0);
-        });
-    });
-
-    describe("Comprehensive Shipment Lifecycle", function () {
-        it("Should handle complete shipment lifecycle successfully", async function () {
-            // 1. Create shipment
-            const tx1 = await shipmentRegistry.connect(distributor).createShipment(
-                productId,
-                retailer.address,
-                "TRACK001",
-                "TRUCK"
-            );
-            await expect(tx1).to.emit(shipmentRegistry, "ShipmentCreated");
-
-            // 2. Ship
-            const tx2 = await shipmentRegistry.connect(distributor).updateShipmentStatus(
-                1, 2, "Dispatched from warehouse", "Distribution Center"
-            );
-            await expect(tx2).to.emit(shipmentRegistry, "ShipmentStatusUpdated");
-
-            // 3. Deliver
-            const tx3 = await shipmentRegistry.connect(retailer).updateShipmentStatus(
-                1, 3, "Received at store", "Retail Location"
-            );
-            await expect(tx3).to.emit(shipmentRegistry, "ShipmentDelivered");
-
-            // 4. Verify
-            const tx4 = await shipmentRegistry.connect(retailer).updateShipmentStatus(
-                1, 6, "Delivery confirmed", "Store Inventory"
-            );
-            await expect(tx4).to.emit(shipmentRegistry, "ShipmentStatusUpdated");
-
-            // 5. Verify final state
-            const shipmentInfo = await shipmentRegistry.getShipmentInfo(1);
-            expect(shipmentInfo.status).to.equal(6); // VERIFIED
-            expect(shipmentInfo.isActive).to.be.true;
-
-            // 6. Check history
-            const history = await shipmentRegistry.getShipmentHistory(1);
-            expect(history).to.have.length(4); // Create + 3 updates
-        });
-
-        it("Should handle shipment cancellation lifecycle", async function () {
-            // 1. Create shipment
-            await shipmentRegistry.connect(distributor).createShipment(
-                productId,
-                retailer.address,
-                "TRACK001",
-                "TRUCK"
-            );
-
-            // 2. Cancel
-            const tx = await shipmentRegistry.connect(distributor).cancelShipment(
-                1, "Customer requested cancellation"
-            );
-            await expect(tx).to.emit(shipmentRegistry, "ShipmentCancelled");
-
-            // 3. Verify cancellation
-            const shipmentInfo = await shipmentRegistry.getShipmentInfo(1);
-            expect(shipmentInfo.status).to.equal(4); // CANCELLED
-
-            // 4. Should not be able to update cancelled shipment
-            await expect(
-                shipmentRegistry.connect(distributor).updateShipmentStatus(
-                    1, 2, "Try to ship cancelled", "Location"
-                )
-            ).to.be.revertedWith("Invalid shipment status transition");
-        });
-    });
-
-    // Helper function to get block timestamp
-    async function getBlockTimestamp(tx) {
-        const receipt = await tx.wait();
-        const block = await ethers.provider.getBlock(receipt.blockNumber);
-        return block.timestamp;
-    }
-}); 
+});

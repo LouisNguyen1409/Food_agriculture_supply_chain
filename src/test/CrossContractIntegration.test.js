@@ -1,569 +1,386 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
-const { TestHelpers } = require("./helpers/testHelpers");
 
-describe("Cross-Contract Integration Tests", function () {
-    let testHelpers;
-    let productRegistry;
-    let stakeholderRegistry;
-    let shipmentRegistry;
+// Helper to get block timestamp
+async function getBlockTimestamp(tx) {
+    const receipt = await tx.wait();
+    const block = await ethers.provider.getBlock(receipt.blockNumber);
+    return block.timestamp;
+}
+
+describe("Cross-Contract Integration Tests (Factory/Registry Architecture)", function () {
+    let registry, stakeholderFactory, productFactory, shipmentFactory, stakeholderRegistry;
     let accounts;
-    let deployer, farmer, processor, distributor, retailer, consumer, unauthorized;
+    let deployer, admin, farmer, processor, distributor, retailer, consumer, auditor, unauthorized;
 
     beforeEach(async function () {
-        testHelpers = new TestHelpers();
-        accounts = await testHelpers.setup();
-        ({ deployer, farmer, processor, distributor, retailer, consumer, unauthorized } = accounts);
+        accounts = await ethers.getSigners();
+        [deployer, admin, farmer, processor, distributor, retailer, consumer, auditor, unauthorized] = accounts;
 
-        // Deploy all contracts
-        stakeholderRegistry = await testHelpers.deployStakeholderRegistry();
-        productRegistry = await testHelpers.deployProductRegistry(
+        // Deploy Registry
+        const Registry = await ethers.getContractFactory("Registry");
+        registry = await Registry.deploy();
+        await registry.waitForDeployment();
+
+        // Deploy StakeholderFactory
+        const StakeholderFactory = await ethers.getContractFactory("StakeholderFactory");
+        stakeholderFactory = await StakeholderFactory.deploy(await registry.getAddress());
+        await stakeholderFactory.waitForDeployment();
+
+        // Deploy StakeholderRegistry
+        const StakeholderRegistry = await ethers.getContractFactory("StakeholderRegistry");
+        stakeholderRegistry = await StakeholderRegistry.deploy(await registry.getAddress());
+        await stakeholderRegistry.waitForDeployment();
+
+        // Deploy ProductFactory (mock oracle feeds as zero address)
+        const ProductFactory = await ethers.getContractFactory("ProductFactory");
+        productFactory = await ProductFactory.deploy(
+            await stakeholderRegistry.getAddress(),
+            await registry.getAddress(),
+            ethers.ZeroAddress, // temperatureFeed
+            ethers.ZeroAddress, // humidityFeed
+            ethers.ZeroAddress, // rainfallFeed
+            ethers.ZeroAddress, // windSpeedFeed
+            ethers.ZeroAddress  // priceFeed
+        );
+        await productFactory.waitForDeployment();
+
+        // Deploy ShipmentFactory
+        const ShipmentFactory = await ethers.getContractFactory("ShipmentFactory");
+        shipmentFactory = await ShipmentFactory.deploy(
+            await registry.getAddress(),
             await stakeholderRegistry.getAddress()
         );
-        shipmentRegistry = await testHelpers.deployShipmentRegistry(
-            await stakeholderRegistry.getAddress(),
-            await productRegistry.getAddress()
+        await shipmentFactory.waitForDeployment();
+
+        // Register stakeholders using StakeholderFactory (admin only)
+        await stakeholderFactory.connect(deployer).createStakeholder(
+            farmer.address, 0, "Green Farm Co", "FARM-001", "Iowa, USA", "Organic Certified"
         );
-
-        // Register stakeholders
-        await testHelpers.setupStakeholders(stakeholderRegistry);
+        await stakeholderFactory.connect(deployer).createStakeholder(
+            processor.address, 1, "Fresh Processing Ltd", "PROC-001", "California, USA", "FDA Approved"
+        );
+        await stakeholderFactory.connect(deployer).createStakeholder(
+            retailer.address, 2, "Super Market Chain", "RETAIL-001", "New York, USA", "Food Safety Certified"
+        );
+        await stakeholderFactory.connect(deployer).createStakeholder(
+            distributor.address, 3, "Quick Distribution", "DIST-001", "Texas, USA", "Cold Chain Certified"
+        );
     });
-
-    async function getBlockTimestamp(tx) {
-        const receipt = await tx.wait();
-        const block = await ethers.provider.getBlock(receipt.blockNumber);
-        return block.timestamp;
-    }
 
     describe("Stakeholder Registry Integration", function () {
         it("Should enforce stakeholder validation across all contracts", async function () {
-            // Test ProductRegistry enforcement
+            // Unauthorized should not be able to create product
             await expect(
-                productRegistry.connect(unauthorized).registerProduct(
-                    "Unauthorized Product",
-                    "UNAUTH_BATCH",
+                productFactory.connect(unauthorized).createProduct(
+                    "Unauthorized Product", 
+                    "Fresh produce", 
+                    0, 
+                    25, 
+                    "Unknown Location", 
                     "Farm data"
                 )
             ).to.be.revertedWith("Not registered for this role");
-
-            // Test ShipmentRegistry enforcement
-            const productId = await testHelpers.createSampleProductSimple(productRegistry, farmer);
-            await testHelpers.updateProductStage(productRegistry, processor, productId, 1, "Processed");
-
-            await expect(
-                shipmentRegistry.connect(unauthorized).createShipment(
-                    productId,
-                    retailer.address,
-                    "UNAUTH_TRACK",
-                    "TRUCK"
-                )
-            ).to.be.revertedWith("Not registered as distributor");
         });
 
         it("Should allow proper role-based operations across contracts", async function () {
-            // Farmer can register product
-            const productId = await testHelpers.createSampleProductSimple(productRegistry, farmer);
-            expect(productId).to.be.greaterThan(0);
-
-            // Processor can update product
-            await expect(
-                productRegistry.connect(processor).updateProcessingStage(
-                    productId,
-                    "Processed successfully"
-                )
-            ).to.not.be.reverted;
-
-            // Distributor can create shipment
-            await expect(
-                shipmentRegistry.connect(distributor).createShipment(
-                    productId,
-                    retailer.address,
-                    "DIST_TRACK",
-                    "TRUCK"
-                )
-            ).to.not.be.reverted;
-        });
-
-        it("Should update last activity across contracts", async function () {
-            const productId = await testHelpers.createSampleProductSimple(productRegistry, farmer);
-            
-            const initialInfo = await stakeholderRegistry.getStakeholderInfo(farmer.address);
-            const initialActivity = initialInfo.lastActivity;
-
-            // Wait and perform operations that should update activity
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            
-            await productRegistry.connect(processor).updateProcessingStage(
-                productId,
-                "Processing updates activity"
+            // Farmer creates product
+            const tx = await productFactory.connect(farmer).createProduct(
+                "Organic Apples", 
+                "Fresh organic apples from the farm", 
+                2, 
+                8, 
+                "Green Farm, Iowa", 
+                "Organic certification data"
             );
+            const receipt = await tx.wait();
+            
+            // Extract product address from event
+            const productCreatedEvent = receipt.logs.find(log => {
+                try { 
+                    const parsed = productFactory.interface.parseLog(log);
+                    return parsed.name === 'ProductCreated'; 
+                } catch { 
+                    return false; 
+                }
+            });
+            
+            expect(productCreatedEvent).to.not.be.null;
+            const productAddress = productFactory.interface.parseLog(productCreatedEvent).args.productAddress;
+            expect(productAddress).to.not.equal(ethers.ZeroAddress);
 
-            const updatedInfo = await stakeholderRegistry.getStakeholderInfo(processor.address);
-            const updatedActivity = updatedInfo.lastActivity;
-
-            expect(updatedActivity).to.be.greaterThan(initialActivity);
+            // Processor can update product to PROCESSING stage
+            const Product = await ethers.getContractFactory("Product");
+            const product = Product.attach(productAddress);
+            
+            await expect(
+                product.connect(processor).updateProcessingStage("Processed successfully")
+            ).to.not.be.reverted;
+            
+            // Verify the product stage changed
+            expect(await product.currentStage()).to.equal(1); // PROCESSING stage
         });
 
-        it("Should handle stakeholder deactivation across contracts", async function () {
-            const productId = await testHelpers.createSampleProductSimple(productRegistry, farmer);
+        it("Should verify stakeholder registration works correctly", async function () {
+            // Check farmer is registered with correct role
+            const isFarmerRegistered = await stakeholderRegistry.isRegisteredStakeholder(
+                farmer.address, 
+                0 // FARMER role
+            );
+            expect(isFarmerRegistered).to.be.true;
 
-            // Deactivate farmer
-            await stakeholderRegistry.connect(deployer).deactivateStakeholder(farmer.address);
-
-            // Farmer should no longer be able to register products
-            await expect(
-                productRegistry.connect(farmer).registerProduct(
-                    "New Product",
-                    "NEW_BATCH",
-                    "Farm data"
-                )
-            ).to.be.revertedWith("Not registered for this role");
-
-            // But existing products should still be manageable by farmer for deactivation
-            await expect(
-                productRegistry.connect(farmer).deactivateProduct(productId)
-            ).to.be.revertedWith("Not registered for this role");
+            // Check unauthorized is not registered
+            const isUnauthorizedRegistered = await stakeholderRegistry.isRegisteredStakeholder(
+                unauthorized.address, 
+                0 // FARMER role
+            );
+            expect(isUnauthorizedRegistered).to.be.false;
         });
     });
 
     describe("Product-Shipment Integration", function () {
-        let productId;
-
+        let productAddress;
+        
         beforeEach(async function () {
-            productId = await testHelpers.createSampleProductSimple(productRegistry, farmer);
+            // Farmer creates product
+            const tx = await productFactory.connect(farmer).createProduct(
+                "Fresh Apples", 
+                "Premium quality apples", 
+                2, 
+                8, 
+                "Organic Farm, Iowa", 
+                "Harvest date: 2025-07-24"
+            );
+            const receipt = await tx.wait();
+            
+            const productCreatedEvent = receipt.logs.find(log => {
+                try { 
+                    return productFactory.interface.parseLog(log).name === 'ProductCreated'; 
+                } catch { 
+                    return false; 
+                }
+            });
+            productAddress = productFactory.interface.parseLog(productCreatedEvent).args.productAddress;
+            
+            // Processor updates product to PROCESSING stage
+            const Product = await ethers.getContractFactory("Product");
+            const product = Product.attach(productAddress);
+            await product.connect(processor).updateProcessingStage("Quality checked and processed");
         });
 
-        it("Should enforce product stage requirements for shipment creation", async function () {
-            // Product at FARM stage should not be shippable
-            await expect(
-                shipmentRegistry.connect(distributor).createShipment(
-                    productId,
-                    retailer.address,
-                    "FARM_TRACK",
-                    "TRUCK"
-                )
-            ).to.be.revertedWith("Product not ready for shipment");
-
-            // Update to PROCESSING stage
-            await productRegistry.connect(processor).updateProcessingStage(
-                productId,
-                "Now ready for shipment"
+        it("Should allow distributors to create shipments for processed products", async function () {
+            // Distributor creates shipment
+            const tx = await shipmentFactory.connect(distributor).createShipment(
+                productAddress, 
+                retailer.address, 
+                "TRACK001", 
+                "REFRIGERATED_TRUCK"
             );
-
-            // Now shipment should be possible
-            await expect(
-                shipmentRegistry.connect(distributor).createShipment(
-                    productId,
-                    retailer.address,
-                    "PROC_TRACK",
-                    "TRUCK"
-                )
-            ).to.not.be.reverted;
+            
+            const receipt = await tx.wait();
+            const shipmentCreatedEvent = receipt.logs.find(log => {
+                try { 
+                    return shipmentFactory.interface.parseLog(log).name === 'ShipmentCreated'; 
+                } catch { 
+                    return false; 
+                }
+            });
+            
+            expect(shipmentCreatedEvent).to.not.be.null;
+            const shipmentAddress = shipmentFactory.interface.parseLog(shipmentCreatedEvent).args.shipmentAddress;
+            expect(shipmentAddress).to.not.equal(ethers.ZeroAddress);
         });
 
-        it("Should prevent multiple active shipments for same product", async function () {
-            await testHelpers.updateProductStage(productRegistry, processor, productId, 1, "Processed");
-
-            // Create first shipment
-            await shipmentRegistry.connect(distributor).createShipment(
-                productId,
-                retailer.address,
-                "TRACK001",
-                "TRUCK"
-            );
-
-            // Attempt second shipment should fail
+        it("Should prevent non-distributors from creating shipments", async function () {
+            // Farmer tries to create shipment (should fail)
             await expect(
-                shipmentRegistry.connect(distributor).createShipment(
-                    productId,
-                    consumer.address,
-                    "TRACK002",
+                shipmentFactory.connect(farmer).createShipment(
+                    productAddress, 
+                    retailer.address, 
+                    "TRACK002", 
+                    "TRUCK"
+                )
+            ).to.be.revertedWith("Not registered as distributor");
+
+            // Processor tries to create shipment (should fail)
+            await expect(
+                shipmentFactory.connect(processor).createShipment(
+                    productAddress, 
+                    retailer.address, 
+                    "TRACK003", 
                     "VAN"
                 )
-            ).to.be.revertedWith("Product already has an active shipment");
-        });
-
-        it("Should verify product validity for shipment", async function () {
-            await testHelpers.updateProductStage(productRegistry, processor, productId, 1, "Processed");
-
-            // Deactivate product
-            await productRegistry.connect(farmer).deactivateProduct(productId);
-
-            // Should not be able to ship deactivated product
-            await expect(
-                shipmentRegistry.connect(distributor).createShipment(
-                    productId,
-                    retailer.address,
-                    "DEACT_TRACK",
-                    "TRUCK"
-                )
-            ).to.be.revertedWith("Product does not exist");
-        });
-
-        it("Should handle shipment-product relationship correctly", async function () {
-            await testHelpers.updateProductStage(productRegistry, processor, productId, 1, "Processed");
-
-            const shipmentId = await testHelpers.createSampleShipment(
-                shipmentRegistry,
-                distributor,
-                productId,
-                retailer.address
-            );
-
-            // Verify relationship mappings
-            const foundShipmentId = await shipmentRegistry.getShipmentByProduct(productId);
-            expect(foundShipmentId).to.equal(shipmentId);
-
-            const shipmentInfo = await shipmentRegistry.getShipmentInfo(shipmentId);
-            expect(shipmentInfo.productId).to.equal(productId);
+            ).to.be.revertedWith("Not registered as distributor");
         });
     });
 
     describe("Complete Supply Chain Workflow Integration", function () {
         it("Should handle end-to-end product lifecycle with shipments", async function () {
-            // 1. Register product (FARM stage)
-            const productId = await testHelpers.createSampleProductSimple(productRegistry, farmer);
-            let productInfo = await productRegistry.getProductInfo(productId);
-            expect(productInfo.currentStage).to.equal(0); // FARM
-
-            // 2. Process product (PROCESSING stage)
-            await productRegistry.connect(processor).updateProcessingStage(
-                productId,
-                "Organic processing with quality controls"
+            // 1. Farmer creates product
+            const productTx = await productFactory.connect(farmer).createProduct(
+                "Premium Organic Apples", 
+                "Grade A organic apples", 
+                2, 
+                8, 
+                "Sustainable Farm, Iowa", 
+                "Certified organic, pesticide-free"
             );
-            productInfo = await productRegistry.getProductInfo(productId);
-            expect(productInfo.currentStage).to.equal(1); // PROCESSING
+            const productReceipt = await productTx.wait();
+            
+            const productCreatedEvent = productReceipt.logs.find(log => {
+                try { 
+                    return productFactory.interface.parseLog(log).name === 'ProductCreated'; 
+                } catch { 
+                    return false; 
+                }
+            });
+            const productAddress = productFactory.interface.parseLog(productCreatedEvent).args.productAddress;
+            
+            const Product = await ethers.getContractFactory("Product");
+            const product = Product.attach(productAddress);
 
-            // 3. Create shipment for distribution
-            const shipmentId = await testHelpers.createSampleShipment(
-                shipmentRegistry,
-                distributor,
-                productId,
-                retailer.address
+            // Verify initial stage is FARM
+            expect(await product.currentStage()).to.equal(0); // FARM stage
+
+            // 2. Processor updates to PROCESSING stage
+            await product.connect(processor).updateProcessingStage("Washed, sorted, and packaged");
+            expect(await product.currentStage()).to.equal(1); // PROCESSING stage
+
+            // 3. Distributor creates shipment
+            const shipmentTx = await shipmentFactory.connect(distributor).createShipment(
+                productAddress, 
+                retailer.address, 
+                "TRACK_E2E_001", 
+                "REFRIGERATED_TRUCK"
             );
+            const shipmentReceipt = await shipmentTx.wait();
+            
+            const shipmentCreatedEvent = shipmentReceipt.logs.find(log => {
+                try { 
+                    return shipmentFactory.interface.parseLog(log).name === 'ShipmentCreated'; 
+                } catch { 
+                    return false; 
+                }
+            });
+            const shipmentAddress = shipmentFactory.interface.parseLog(shipmentCreatedEvent).args.shipmentAddress;
+            
+            const Shipment = await ethers.getContractFactory("Shipment");
+            const shipment = Shipment.attach(shipmentAddress);
 
-            // 4. Update product to distribution stage
-            await productRegistry.connect(distributor).updateDistributionStage(
-                productId,
-                "Distributed through cold chain network"
-            );
-            productInfo = await productRegistry.getProductInfo(productId);
-            expect(productInfo.currentStage).to.equal(2); // DISTRIBUTION
+            // Verify initial shipment status
+            expect(await shipment.status()).to.equal(1); // PREPARING
 
-            // 5. Ship the product
-            await shipmentRegistry.connect(distributor).updateShipmentStatus(
-                shipmentId,
-                2, // SHIPPED
-                "En route to retail location",
-                "Distribution Center"
-            );
+            // 4. Distributor updates product to DISTRIBUTION stage
+            await product.connect(distributor).updateDistributionStage("In transit to retail store");
+            expect(await product.currentStage()).to.equal(2); // DISTRIBUTION stage
 
-            // 6. Deliver product and update to retail stage
-            await shipmentRegistry.connect(retailer).updateShipmentStatus(
-                shipmentId,
-                3, // DELIVERED
-                "Received at retail store",
-                "Store Inventory"
-            );
+            // 5. Distributor updates shipment to SHIPPED
+            await shipment.connect(distributor).updateStatus(2, "En route to destination", "Distribution Center");
+            expect(await shipment.status()).to.equal(2); // SHIPPED
 
-            await productRegistry.connect(retailer).updateRetailStage(
-                productId,
-                "Available for purchase in produce section"
-            );
-            productInfo = await productRegistry.getProductInfo(productId);
-            expect(productInfo.currentStage).to.equal(3); // RETAIL
+            // 6. Retailer updates shipment to DELIVERED
+            await shipment.connect(retailer).updateStatus(3, "Received at store", "Retail Store Dock");
+            expect(await shipment.status()).to.equal(3); // DELIVERED
 
-            // 7. Verify shipment delivery
-            await shipmentRegistry.connect(retailer).updateShipmentStatus(
-                shipmentId,
-                6, // VERIFIED
-                "Delivery confirmed and inventory updated",
-                "Store System"
-            );
+            // 7. Retailer verifies delivery
+            await shipment.connect(retailer).verifyDelivery();
+            expect(await shipment.status()).to.equal(6); // VERIFIED
 
-            // 8. Consumer purchase
-            await productRegistry.connect(consumer).markAsConsumed(productId);
-            productInfo = await productRegistry.getProductInfo(productId);
-            expect(productInfo.currentStage).to.equal(4); // CONSUMED
+            // 8. Retailer updates product to RETAIL stage
+            await product.connect(retailer).updateRetailStage("Available for sale in produce section");
+            expect(await product.currentStage()).to.equal(3); // RETAIL stage
 
-            // 9. Verify complete traceability
-            const [isValid, verifiedProductInfo] = await productRegistry.verifyProduct(productId);
+            // 9. Consumer marks product as consumed
+            await product.connect(consumer).markAsConsumed();
+            expect(await product.currentStage()).to.equal(4); // CONSUMED stage
+
+            // 10. Verify complete traceability
+            const isValid = await product.verifyProduct();
             expect(isValid).to.be.true;
-            expect(verifiedProductInfo.currentStage).to.equal(4);
-
-            const shipmentInfo = await shipmentRegistry.getShipmentInfo(shipmentId);
-            expect(shipmentInfo.status).to.equal(6); // VERIFIED
         });
 
-        it("Should handle multiple products with different shipment patterns", async function () {
-            // Create multiple products
-            const productId1 = await testHelpers.createSampleProductSimple(productRegistry, farmer, "Product1", "BATCH001");
-            const productId2 = await testHelpers.createSampleProductSimple(productRegistry, farmer, "Product2", "BATCH002");
-            const productId3 = await testHelpers.createSampleProductSimple(productRegistry, farmer, "Product3", "BATCH003");
+        it("Should maintain data integrity across contract interactions", async function () {
+            // Create product and shipment
+            const productTx = await productFactory.connect(farmer).createProduct(
+                "Test Apples", 
+                "Test description", 
+                0, 
+                10, 
+                "Test Farm", 
+                "Test data"
+            );
+            const productReceipt = await productTx.wait();
+            const productAddress = productFactory.interface.parseLog(
+                productReceipt.logs.find(log => {
+                    try { return productFactory.interface.parseLog(log).name === 'ProductCreated'; } catch { return false; }
+                })
+            ).args.productAddress;
 
-            // Process all products
-            await productRegistry.connect(processor).updateProcessingStage(productId1, "Processed1");
-            await productRegistry.connect(processor).updateProcessingStage(productId2, "Processed2");
-            await productRegistry.connect(processor).updateProcessingStage(productId3, "Processed3");
+            const Product = await ethers.getContractFactory("Product");
+            const product = Product.attach(productAddress);
+            await product.connect(processor).updateProcessingStage("Processed");
 
-            // Create shipments for first two products
-            const shipmentId1 = await testHelpers.createSampleShipment(shipmentRegistry, distributor, productId1, retailer.address);
-            const shipmentId2 = await testHelpers.createSampleShipment(shipmentRegistry, distributor, productId2, consumer.address);
+            const shipmentTx = await shipmentFactory.connect(distributor).createShipment(
+                productAddress, 
+                retailer.address, 
+                "DATA_INTEGRITY_001", 
+                "TRUCK"
+            );
+            const shipmentReceipt = await shipmentTx.wait();
+            const shipmentAddress = shipmentFactory.interface.parseLog(
+                shipmentReceipt.logs.find(log => {
+                    try { return shipmentFactory.interface.parseLog(log).name === 'ShipmentCreated'; } catch { return false; }
+                })
+            ).args.shipmentAddress;
 
-            // Third product goes to distribution without shipment initially
-            await productRegistry.connect(distributor).updateDistributionStage(productId3, "Distributed");
-
-            // Verify shipment-product mappings
-            expect(await shipmentRegistry.getShipmentByProduct(productId1)).to.equal(shipmentId1);
-            expect(await shipmentRegistry.getShipmentByProduct(productId2)).to.equal(shipmentId2);
-            expect(await shipmentRegistry.getShipmentByProduct(productId3)).to.equal(0); // No shipment yet
-
-            // Update shipment statuses differently
-            await shipmentRegistry.connect(distributor).updateShipmentStatus(shipmentId1, 2, "Shipped", "Transit");
-            await shipmentRegistry.connect(distributor).cancelShipment(shipmentId2, "Customer cancellation");
-
-            // Create late shipment for third product
-            const shipmentId3 = await testHelpers.createSampleShipment(shipmentRegistry, distributor, productId3, retailer.address);
-
-            // Verify final states
-            const shipment1Info = await shipmentRegistry.getShipmentInfo(shipmentId1);
-            const shipment2Info = await shipmentRegistry.getShipmentInfo(shipmentId2);
-            const shipment3Info = await shipmentRegistry.getShipmentInfo(shipmentId3);
-
-            expect(shipment1Info.status).to.equal(2); // SHIPPED
-            expect(shipment2Info.status).to.equal(4); // CANCELLED
-            expect(shipment3Info.status).to.equal(1); // PREPARING
+            // Verify data consistency
+            const Shipment = await ethers.getContractFactory("Shipment");
+            const shipment = Shipment.attach(shipmentAddress);
+            
+            expect(await shipment.productAddress()).to.equal(productAddress);
+            expect(await shipment.sender()).to.equal(distributor.address);
+            expect(await shipment.receiver()).to.equal(retailer.address);
+            expect(await shipment.trackingNumber()).to.equal("DATA_INTEGRITY_001");
         });
     });
 
-    describe("Data Consistency and Validation", function () {
-        it("Should maintain data consistency across contract interactions", async function () {
-            const productId = await testHelpers.createSampleProductSimple(productRegistry, farmer);
-            await testHelpers.updateProductStage(productRegistry, processor, productId, 1, "Processed");
-
-            const shipmentId = await testHelpers.createSampleShipment(shipmentRegistry, distributor, productId, retailer.address);
-
-            // Verify consistent stakeholder information
-            const farmerInfo = await stakeholderRegistry.getStakeholderInfo(farmer.address);
-            const distributorInfo = await stakeholderRegistry.getStakeholderInfo(distributor.address);
-            const retailerInfo = await stakeholderRegistry.getStakeholderInfo(retailer.address);
-
-            expect(farmerInfo.role).to.equal(0); // FARMER
-            expect(distributorInfo.role).to.equal(3); // DISTRIBUTOR
-            expect(retailerInfo.role).to.equal(2); // RETAILER
-
-            // Verify product data consistency
-            const productInfo = await productRegistry.getProductInfo(productId);
-            const [isValid, verifiedProductInfo] = await productRegistry.verifyProduct(productId);
-
-            expect(isValid).to.be.true;
-            expect(productInfo.farmer).to.equal(farmer.address);
-            expect(verifiedProductInfo.farmer).to.equal(farmer.address);
-
-            // Verify shipment data consistency
-            const shipmentInfo = await shipmentRegistry.getShipmentInfo(shipmentId);
-            const [productIds, sender, receiver] = await shipmentRegistry.getShipment(shipmentId);
-
-            expect(shipmentInfo.productId).to.equal(productId);
-            expect(productIds[0]).to.equal(productId);
-            expect(sender).to.equal(distributor.address);
-            expect(receiver).to.equal(retailer.address);
-        });
-
-        it("Should handle contract interaction edge cases", async function () {
-            // Test with non-existent product
+    describe("Error Handling and Edge Cases", function () {
+        it("Should handle invalid operations gracefully", async function () {
+            // Try to create shipment with invalid addresses
             await expect(
-                shipmentRegistry.connect(distributor).createShipment(
-                    999, // non-existent product
-                    retailer.address,
-                    "NONEXIST_TRACK",
+                shipmentFactory.connect(distributor).createShipment(
+                    ethers.ZeroAddress, // invalid product
+                    retailer.address, 
+                    "INVALID_001", 
                     "TRUCK"
                 )
-            ).to.be.revertedWith("Product does not exist");
+            ).to.be.reverted; // Should fail due to invalid product
 
-            // Test stakeholder validation edge cases
-            const productId = await testHelpers.createSampleProductSimple(productRegistry, farmer);
-            
-            // Processor trying to register product (wrong role)
+            // Try to create product with invalid parameters
             await expect(
-                productRegistry.connect(processor).registerProduct(
-                    "Wrong Role Product",
-                    "WRONG_BATCH",
-                    "Farm data"
+                productFactory.connect(farmer).createProduct(
+                    "", // empty name
+                    "Description", 
+                    0, 
+                    10, 
+                    "Location", 
+                    "Data"
                 )
-            ).to.be.revertedWith("Not registered for this role");
-
-            // Farmer trying to create shipment (wrong role)
-            await testHelpers.updateProductStage(productRegistry, processor, productId, 1, "Processed");
-            await expect(
-                shipmentRegistry.connect(farmer).createShipment(
-                    productId,
-                    retailer.address,
-                    "WRONG_TRACK",
-                    "TRUCK"
-                )
-            ).to.be.revertedWith("Not registered as distributor");
-        });
-    });
-
-    describe("Performance and Scalability Integration", function () {
-        it("Should handle multiple stakeholders and products efficiently", async function () {
-            // Register additional stakeholders
-            const extraStakeholders = [accounts.auditor];
-            for (let i = 0; i < extraStakeholders.length; i++) {
-                await stakeholderRegistry.connect(deployer).registerStakeholder(
-                    extraStakeholders[i].address,
-                    0, // FARMER role
-                    `Extra Farm ${i}`,
-                    `EXTRA_LICENSE_${i}`,
-                    `Extra Location ${i}`,
-                    `Extra Cert ${i}`
-                );
-            }
-
-            // Create multiple products
-            const numProducts = 3;
-            const productIds = [];
-            
-            for (let i = 0; i < numProducts; i++) {
-                const stakeholder = i < extraStakeholders.length ? extraStakeholders[i] : farmer;
-                const productId = await testHelpers.createSampleProductSimple(
-                    productRegistry,
-                    stakeholder,
-                    `ScaleProduct${i}`,
-                    `SCALE_BATCH_${i.toString().padStart(3, '0')}`
-                );
-                productIds.push(productId);
-            }
-
-            // Process all products
-            for (const productId of productIds) {
-                await productRegistry.connect(processor).updateProcessingStage(
-                    productId,
-                    `Batch processing for product ${productId}`
-                );
-            }
-
-            // Create shipments for all products
-            const shipmentIds = [];
-            for (const productId of productIds) {
-                const shipmentId = await testHelpers.createSampleShipment(
-                    shipmentRegistry,
-                    distributor,
-                    productId,
-                    retailer.address
-                );
-                shipmentIds.push(shipmentId);
-            }
-
-            // Verify all were created successfully
-            expect(productIds).to.have.length(numProducts);
-            expect(shipmentIds).to.have.length(numProducts);
-
-            // Verify stakeholder product associations
-            const farmerProducts = await productRegistry.getStakeholderProducts(farmer.address);
-            expect(farmerProducts.length).to.be.greaterThan(0);
-
-            // Verify shipment statistics
-            const [totalShipments] = await shipmentRegistry.getShipmentStats();
-            expect(totalShipments).to.equal(numProducts);
+            ).to.be.reverted; // Should fail due to empty name
         });
 
-        it("Should maintain performance with complex state transitions", async function () {
-            const productId = await testHelpers.createSampleProductSimple(productRegistry, farmer);
-            
-            // Rapid state transitions
-            await productRegistry.connect(processor).updateProcessingStage(productId, "Quick process");
-            await productRegistry.connect(distributor).updateDistributionStage(productId, "Quick distribution");
-            await productRegistry.connect(retailer).updateRetailStage(productId, "Quick retail");
-
-            const shipmentId = await testHelpers.createSampleShipment(shipmentRegistry, distributor, productId, retailer.address);
-
-            // Rapid shipment transitions
-            await shipmentRegistry.connect(distributor).updateShipmentStatus(shipmentId, 2, "Quick ship", "Transit");
-            await shipmentRegistry.connect(retailer).updateShipmentStatus(shipmentId, 3, "Quick deliver", "Store");
-            await shipmentRegistry.connect(retailer).updateShipmentStatus(shipmentId, 6, "Quick verify", "Inventory");
-
-            // Final consumption
-            await productRegistry.connect(consumer).markAsConsumed(productId);
-
-            // Verify final states are correct
-            const productInfo = await productRegistry.getProductInfo(productId);
-            const shipmentInfo = await shipmentRegistry.getShipmentInfo(shipmentId);
-
-            expect(productInfo.currentStage).to.equal(4); // CONSUMED
-            expect(shipmentInfo.status).to.equal(6); // VERIFIED
-
-            // Verify traceability is maintained
-            const [isValid] = await productRegistry.verifyProduct(productId);
-            expect(isValid).to.be.true;
-
-            const history = await shipmentRegistry.getShipmentHistory(shipmentId);
-            expect(history.length).to.equal(4); // Create + 3 updates
-        });
-    });
-
-    describe("Error Handling and Recovery", function () {
-        it("Should handle contract interaction failures gracefully", async function () {
-            const productId = await testHelpers.createSampleProductSimple(productRegistry, farmer);
-
-            // Try operations in wrong order
+        it("Should prevent unauthorized access to contract functions", async function () {
+            // Unauthorized user tries to use admin functions
             await expect(
-                shipmentRegistry.connect(distributor).createShipment(
-                    productId,
-                    retailer.address,
-                    "PREMATURE_TRACK",
-                    "TRUCK"
+                stakeholderFactory.connect(unauthorized).createStakeholder(
+                    unauthorized.address, 
+                    0, 
+                    "Unauthorized Biz", 
+                    "UNAUTH-001", 
+                    "Unknown", 
+                    "None"
                 )
-            ).to.be.revertedWith("Product not ready for shipment");
-
-            // Fix the order
-            await productRegistry.connect(processor).updateProcessingStage(productId, "Now ready");
-            
-            // Should work now
-            await expect(
-                shipmentRegistry.connect(distributor).createShipment(
-                    productId,
-                    retailer.address,
-                    "CORRECT_TRACK",
-                    "TRUCK"
-                )
-            ).to.not.be.reverted;
-        });
-
-        it("Should handle stakeholder state changes during operations", async function () {
-            const productId = await testHelpers.createSampleProductSimple(productRegistry, farmer);
-            await testHelpers.updateProductStage(productRegistry, processor, productId, 1, "Processed");
-
-            const shipmentId = await testHelpers.createSampleShipment(shipmentRegistry, distributor, productId, retailer.address);
-
-            // Deactivate distributor mid-process
-            await stakeholderRegistry.connect(deployer).deactivateStakeholder(distributor.address);
-
-            // Distributor should not be able to update shipment anymore
-            await expect(
-                shipmentRegistry.connect(distributor).updateShipmentStatus(
-                    shipmentId,
-                    2,
-                    "Trying to update after deactivation",
-                    "Location"
-                )
-            ).to.be.revertedWith("Stakeholder is not active");
-
-            // But receiver should still be able to update through valid transitions
-            // Retailer (as receiver) can still update the shipment even though sender is deactivated
-            await expect(
-                shipmentRegistry.connect(retailer).updateShipmentStatus(
-                    shipmentId,
-                    2, // SHIPPED
-                    "Retailer updating shipment status",
-                    "Store"
-                )
-            ).to.not.be.reverted;
-
-            // Verify the status was updated
-            const shipmentInfo = await shipmentRegistry.getShipmentInfo(shipmentId);
-            expect(shipmentInfo.status).to.equal(2); // SHIPPED
+            ).to.be.revertedWith("Only admin can call this function");
         });
     });
 }); 

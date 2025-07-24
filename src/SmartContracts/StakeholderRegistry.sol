@@ -1,174 +1,291 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
+import "./Registry.sol";
+import "./Stakeholder.sol";
+
 contract StakeholderRegistry {
-    enum StakeholderRole {
-        FARMER,
-        PROCESSOR,
-        RETAILER,
-        DISTRIBUTOR
-    }
-
-    struct StakeholderInfo {
-        address stakeholderAddress;
-        StakeholderRole role;
-        string businessName;
-        string businessLicense;
-        string location;
-        string certifications;
-        bool isActive;
-        uint256 registeredAt;
-        uint256 lastActivity;
-    }
-
-    mapping(address => StakeholderInfo) public stakeholders;
-    mapping(StakeholderRole => address[]) public stakeholdersByRole;
-    mapping(string => address) public licenseToAddress;
-
+    Registry public registry;
     address public admin;
-    uint256 public totalStakeholders;
 
-    event StakeholderRegistered(
-        address indexed stakeholder,
-        StakeholderRole indexed role,
-        string businessName,
+    event StakeholderLookupPerformed(
+        address indexed stakeholderContract,
+        address indexed requester,
         uint256 timestamp
     );
 
-    event StakeholderUpdated(address indexed stakeholder, uint256 timestamp);
-    event StakeholderDeactivated(
-        address indexed stakeholder,
-        uint256 timestamp
-    );
-
-    modifier onlyAdmin() {
-        require(msg.sender == admin, "Only admin can call this function");
-        _;
-    }
-
-    modifier validStakeholder(address _stakeholder) {
-        require(
-            stakeholders[_stakeholder].isActive,
-            "Stakeholder is not active"
-        );
-        _;
-    }
-
-    constructor() {
+    constructor(address _registry) {
+        registry = Registry(_registry);
         admin = msg.sender;
     }
 
-    function registerStakeholder(
-        address _stakeholderAddress,
-        StakeholderRole _role,
-        string memory _businessName,
-        string memory _businessLicense,
-        string memory _location,
-        string memory _certifications
-    ) external onlyAdmin {
-        require(
-            _stakeholderAddress != address(0),
-            "Invalid stakeholder address"
-        );
-        require(
-            !stakeholders[_stakeholderAddress].isActive,
-            "Stakeholder already registered"
-        );
-        require(
-            licenseToAddress[_businessLicense] == address(0),
-            "Business license already registered"
-        );
-
-        stakeholders[_stakeholderAddress] = StakeholderInfo({
-            stakeholderAddress: _stakeholderAddress,
-            role: _role,
-            businessName: _businessName,
-            businessLicense: _businessLicense,
-            location: _location,
-            certifications: _certifications,
-            isActive: true,
-            registeredAt: block.timestamp,
-            lastActivity: block.timestamp
-        });
-
-        stakeholdersByRole[_role].push(_stakeholderAddress);
-        licenseToAddress[_businessLicense] = _stakeholderAddress;
-        totalStakeholders++;
-
-        emit StakeholderRegistered(
-            _stakeholderAddress,
-            _role,
-            _businessName,
-            block.timestamp
-        );
-    }
-
+    /**
+     * @dev Check if address is registered stakeholder with specific role
+     */
     function isRegisteredStakeholder(
-        address _stakeholder,
-        StakeholderRole _role
+        address _stakeholderAddress,
+        Stakeholder.StakeholderRole _role
     ) public view returns (bool) {
-        return
-            stakeholders[_stakeholder].isActive &&
-            stakeholders[_stakeholder].role == _role;
+        address stakeholderContract = registry.getStakeholderByWallet(
+            _stakeholderAddress
+        );
+
+        if (stakeholderContract == address(0)) {
+            return false;
+        }
+
+        try Stakeholder(stakeholderContract).hasRole(_role) returns (
+            bool hasRole
+        ) {
+            return hasRole;
+        } catch {
+            return false;
+        }
     }
 
     /**
      * @dev Check if address is any active stakeholder (regardless of role)
-     * @param _stakeholder Address to check
-     * @return bool True if stakeholder is active
      */
     function isActiveStakeholder(
-        address _stakeholder
+        address _stakeholderAddress
     ) public view returns (bool) {
-        return stakeholders[_stakeholder].isActive;
-    }
-
-    function getStakeholderInfo(
-        address _stakeholder
-    ) public view returns (StakeholderInfo memory) {
-        return stakeholders[_stakeholder];
-    }
-
-    function getStakeholdersByRole(
-        StakeholderRole _role
-    ) public view returns (address[] memory) {
-        return stakeholdersByRole[_role];
-    }
-
-    function updateLastActivity(
-        address _stakeholder
-    ) external validStakeholder(_stakeholder) {
-        stakeholders[_stakeholder].lastActivity = block.timestamp;
-        emit StakeholderUpdated(_stakeholder, block.timestamp);
-    }
-
-    function updateStakeholderInfo(
-        address _stakeholder,
-        string memory _businessName,
-        string memory _location,
-        string memory _certifications
-    ) external onlyAdmin validStakeholder(_stakeholder) {
-        stakeholders[_stakeholder].businessName = _businessName;
-        stakeholders[_stakeholder].location = _location;
-        stakeholders[_stakeholder].certifications = _certifications;
-        stakeholders[_stakeholder].lastActivity = block.timestamp;
-
-        emit StakeholderUpdated(_stakeholder, block.timestamp);
-    }
-
-    function deactivateStakeholder(address _stakeholder) external onlyAdmin {
-        require(
-            stakeholders[_stakeholder].isActive,
-            "Stakeholder is not active"
+        address stakeholderContract = registry.getStakeholderByWallet(
+            _stakeholderAddress
         );
 
-        stakeholders[_stakeholder].isActive = false;
+        if (stakeholderContract == address(0)) {
+            return false;
+        }
 
-        emit StakeholderDeactivated(_stakeholder, block.timestamp);
+        try Stakeholder(stakeholderContract).isActive() returns (bool active) {
+            return active;
+        } catch {
+            return false;
+        }
     }
 
-    function transferAdmin(address _newAdmin) external onlyAdmin {
-        require(_newAdmin != address(0), "Invalid new admin address");
-        admin = _newAdmin;
+    /**
+     * @dev Get stakeholder contract by wallet address
+     */
+    function getStakeholderContract(
+        address _stakeholderAddress
+    ) external view returns (address) {
+        return registry.getStakeholderByWallet(_stakeholderAddress);
+    }
+
+    /**
+     * @dev Get stakeholder info by wallet address
+     */
+    function getStakeholderInfo(
+        address _stakeholderAddress
+    )
+        public
+        view
+        returns (
+            address,
+            Stakeholder.StakeholderRole,
+            string memory,
+            string memory,
+            string memory,
+            string memory,
+            bool,
+            uint256,
+            uint256
+        )
+    {
+        address stakeholderContract = registry.getStakeholderByWallet(
+            _stakeholderAddress
+        );
+
+        if (stakeholderContract == address(0)) {
+            return (
+                address(0),
+                Stakeholder.StakeholderRole.FARMER,
+                "",
+                "",
+                "",
+                "",
+                false,
+                0,
+                0
+            );
+        }
+
+        try Stakeholder(stakeholderContract).getStakeholderInfo() returns (
+            address stakeholderAddr,
+            Stakeholder.StakeholderRole stakeholderRole,
+            string memory businessName,
+            string memory businessLicense,
+            string memory location,
+            string memory certifications,
+            bool isActive,
+            uint256 registeredAt,
+            uint256 lastActivity
+        ) {
+            return (
+                stakeholderAddr,
+                stakeholderRole,
+                businessName,
+                businessLicense,
+                location,
+                certifications,
+                isActive,
+                registeredAt,
+                lastActivity
+            );
+        } catch {
+            return (
+                address(0),
+                Stakeholder.StakeholderRole.FARMER,
+                "",
+                "",
+                "",
+                "",
+                false,
+                0,
+                0
+            );
+        }
+    }
+
+    /**
+     * @dev Get stakeholders by role
+     */
+    function getStakeholdersByRole(
+        Stakeholder.StakeholderRole _role
+    ) public view returns (address[] memory) {
+        address[] memory stakeholderContracts = registry.getStakeholdersByRole(_role);
+        address[] memory stakeholderAddresses = new address[](
+            stakeholderContracts.length
+        );
+        uint256 count = 0;
+
+        for (uint256 i = 0; i < stakeholderContracts.length; i++) {
+            try
+                Stakeholder(stakeholderContracts[i]).stakeholderAddress()
+            returns (address addr) {
+                try Stakeholder(stakeholderContracts[i]).isActive() returns (
+                    bool active
+                ) {
+                    if (active) {
+                        stakeholderAddresses[count] = addr;
+                        count++;
+                    }
+                } catch {
+                    continue;
+                }
+            } catch {
+                continue;
+            }
+        }
+
+        // Resize array to actual count
+        address[] memory result = new address[](count);
+        for (uint256 i = 0; i < count; i++) {
+            result[i] = stakeholderAddresses[i];
+        }
+
+        return result;
+    }
+
+    /**
+     * @dev Get stakeholder by business license
+     */
+    function getStakeholderByLicense(
+        string memory _businessLicense
+    ) external view returns (address) {
+        address stakeholderContract = registry.getStakeholderByLicense(
+            _businessLicense
+        );
+
+        if (stakeholderContract == address(0)) {
+            return address(0);
+        }
+
+        try Stakeholder(stakeholderContract).stakeholderAddress() returns (
+            address addr
+        ) {
+            return addr;
+        } catch {
+            return address(0);
+        }
+    }
+
+    /**
+     * @dev Find stakeholders by business name (partial match)
+     */
+    function findStakeholdersByBusinessName(
+        string memory _partialName
+    ) external view returns (address[] memory) {
+        address[] memory allStakeholders = registry.getAllStakeholders();
+        address[] memory matchingStakeholders = new address[](
+            allStakeholders.length
+        );
+        uint256 count = 0;
+
+        bytes memory partialNameBytes = bytes(_partialName);
+
+        for (uint256 i = 0; i < allStakeholders.length; i++) {
+            try Stakeholder(allStakeholders[i]).businessName() returns (
+                string memory businessName
+            ) {
+                try Stakeholder(allStakeholders[i]).isActive() returns (
+                    bool active
+                ) {
+                    if (
+                        active &&
+                        _contains(bytes(businessName), partialNameBytes)
+                    ) {
+                        try
+                            Stakeholder(allStakeholders[i]).stakeholderAddress()
+                        returns (address addr) {
+                            matchingStakeholders[count] = addr;
+                            count++;
+                        } catch {
+                            continue;
+                        }
+                    }
+                } catch {
+                    continue;
+                }
+            } catch {
+                continue;
+            }
+        }
+
+        // Resize array to actual count
+        address[] memory result = new address[](count);
+        for (uint256 i = 0; i < count; i++) {
+            result[i] = matchingStakeholders[i];
+        }
+
+        return result;
+    }
+
+    /**
+     * @dev Helper function to check if bytes contains substring
+     */
+    function _contains(
+        bytes memory haystack,
+        bytes memory needle
+    ) internal pure returns (bool) {
+        if (needle.length > haystack.length) {
+            return false;
+        }
+
+        for (uint256 i = 0; i <= haystack.length - needle.length; i++) {
+            bool found = true;
+            for (uint256 j = 0; j < needle.length; j++) {
+                if (haystack[i + j] != needle[j]) {
+                    found = false;
+                    break;
+                }
+            }
+            if (found) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

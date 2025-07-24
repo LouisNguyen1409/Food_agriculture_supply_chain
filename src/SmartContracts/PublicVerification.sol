@@ -1,92 +1,98 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import "./ProductRegistry.sol";
+import "./Product.sol";
+import "./Shipment.sol";
 import "./StakeholderRegistry.sol";
-import "./ShipmentRegistry.sol";
+import "./Stakeholder.sol";
+import "./Registry.sol";
 
 contract PublicVerification {
-    ProductRegistry public productRegistry;
     StakeholderRegistry public stakeholderRegistry;
-    ShipmentRegistry public shipmentRegistry;
+    Registry public registry;
+
+    // Define the StakeholderInfo struct locally since it's used in return types
+    struct StakeholderInfo {
+        address stakeholderAddress;
+        Stakeholder.StakeholderRole role;
+        string businessName;
+        string businessLicense;
+        string location;
+        string certifications;
+        bool isActive;
+        uint256 registeredAt;
+        uint256 lastActivity;
+    }
 
     event ProductVerificationRequested(
-        uint256 indexed productId,
+        address indexed productAddress,
         address indexed verifier,
         uint256 timestamp
     );
     event VerificationResult(
-        uint256 indexed productId,
+        address indexed productAddress,
         bool isAuthentic,
         string details,
         uint256 timestamp
     );
     event AuditPerformed(
         address indexed auditor,
-        uint256 indexed productId,
+        address indexed productAddress,
         string auditResult,
         uint256 timestamp
     );
     event ShipmentVerificationPerformed(
-        uint256 indexed shipmentId,
-        uint256 indexed productId,
+        address indexed shipmentAddress,
+        address indexed productAddress,
         bool isValid,
         uint256 timestamp
     );
 
-    constructor(
-        address _productRegistryAddress,
-        address _stakeholderRegistryAddress,
-        address _shipmentRegistryAddress
-    ) {
-        productRegistry = ProductRegistry(_productRegistryAddress);
+    constructor(address _stakeholderRegistryAddress, address _registryAddress) {
         stakeholderRegistry = StakeholderRegistry(_stakeholderRegistryAddress);
-        shipmentRegistry = ShipmentRegistry(_shipmentRegistryAddress);
+        registry = Registry(_registryAddress);
     }
 
     function verifyProductAuthenticity(
-        uint256 _productId
+        address _productAddress
     ) external returns (bool isAuthentic, string memory details) {
         emit ProductVerificationRequested(
-            _productId,
+            _productAddress,
             msg.sender,
             block.timestamp
         );
 
-        try productRegistry.verifyProduct(_productId) returns (
-            bool valid,
-            ProductRegistry.ProductInfo memory product
-        ) {
+        try Product(_productAddress).verifyProduct() returns (bool valid) {
             if (valid) {
                 bool stakeholdersValid = true;
                 string memory invalidReason = "";
 
+                Product product = Product(_productAddress);
+                address farmer = product.farmer();
+
                 if (
                     !stakeholderRegistry.isRegisteredStakeholder(
-                        product.farmer,
-                        StakeholderRegistry.StakeholderRole.FARMER
+                        farmer,
+                        Stakeholder.StakeholderRole.FARMER
                     )
                 ) {
                     stakeholdersValid = false;
                     invalidReason = "Farmer registration invalid";
                 }
 
+                Product.ProductStage currentStage = product.currentStage();
+
                 if (
                     stakeholdersValid &&
-                    product.currentStage >=
-                    ProductRegistry.ProductStage.PROCESSING
+                    currentStage >= Product.ProductStage.PROCESSING
                 ) {
-                    ProductRegistry.StageData
-                        memory processingStage = productRegistry
-                            .getProductStageData(
-                                _productId,
-                                ProductRegistry.ProductStage.PROCESSING
-                            );
+                    Product.StageData memory processingStage = product
+                        .getStageData(Product.ProductStage.PROCESSING);
                     if (
                         processingStage.timestamp > 0 &&
                         !stakeholderRegistry.isRegisteredStakeholder(
                             processingStage.stakeholder,
-                            StakeholderRegistry.StakeholderRole.PROCESSOR
+                            Stakeholder.StakeholderRole.PROCESSOR
                         )
                     ) {
                         stakeholdersValid = false;
@@ -96,20 +102,15 @@ contract PublicVerification {
 
                 if (
                     stakeholdersValid &&
-                    product.currentStage >=
-                    ProductRegistry.ProductStage.DISTRIBUTION
+                    currentStage >= Product.ProductStage.DISTRIBUTION
                 ) {
-                    ProductRegistry.StageData
-                        memory distributionStage = productRegistry
-                            .getProductStageData(
-                                _productId,
-                                ProductRegistry.ProductStage.DISTRIBUTION
-                            );
+                    Product.StageData memory distributionStage = product
+                        .getStageData(Product.ProductStage.DISTRIBUTION);
                     if (
                         distributionStage.timestamp > 0 &&
                         !stakeholderRegistry.isRegisteredStakeholder(
                             distributionStage.stakeholder,
-                            StakeholderRegistry.StakeholderRole.DISTRIBUTOR
+                            Stakeholder.StakeholderRole.DISTRIBUTOR
                         )
                     ) {
                         stakeholdersValid = false;
@@ -119,19 +120,16 @@ contract PublicVerification {
 
                 if (
                     stakeholdersValid &&
-                    product.currentStage >= ProductRegistry.ProductStage.RETAIL
+                    currentStage >= Product.ProductStage.RETAIL
                 ) {
-                    ProductRegistry.StageData
-                        memory retailStage = productRegistry
-                            .getProductStageData(
-                                _productId,
-                                ProductRegistry.ProductStage.RETAIL
-                            );
+                    Product.StageData memory retailStage = product.getStageData(
+                        Product.ProductStage.RETAIL
+                    );
                     if (
                         retailStage.timestamp > 0 &&
                         !stakeholderRegistry.isRegisteredStakeholder(
                             retailStage.stakeholder,
-                            StakeholderRegistry.StakeholderRole.RETAILER
+                            Stakeholder.StakeholderRole.RETAILER
                         )
                     ) {
                         stakeholdersValid = false;
@@ -142,7 +140,7 @@ contract PublicVerification {
                 if (stakeholdersValid) {
                     details = "Product is authentic and all stakeholders verified";
                     emit VerificationResult(
-                        _productId,
+                        _productAddress,
                         true,
                         details,
                         block.timestamp
@@ -156,7 +154,7 @@ contract PublicVerification {
                         )
                     );
                     emit VerificationResult(
-                        _productId,
+                        _productAddress,
                         false,
                         details,
                         block.timestamp
@@ -166,7 +164,7 @@ contract PublicVerification {
             } else {
                 details = "Product data integrity compromised";
                 emit VerificationResult(
-                    _productId,
+                    _productAddress,
                     false,
                     details,
                     block.timestamp
@@ -176,7 +174,7 @@ contract PublicVerification {
         } catch {
             details = "Product not found or verification failed";
             emit VerificationResult(
-                _productId,
+                _productAddress,
                 false,
                 details,
                 block.timestamp
@@ -186,120 +184,204 @@ contract PublicVerification {
     }
 
     function verifyCompleteSupplyChain(
-        uint256 _productId
+        address _productAddress
     ) external returns (bool isValid, string memory details) {
         (bool productValid, string memory productDetails) = this
-            .verifyProductAuthenticity(_productId);
+            .verifyProductAuthenticity(_productAddress);
 
         if (!productValid) {
             return (false, productDetails);
         }
 
-        try shipmentRegistry.getShipmentByProduct(_productId) returns (
-            uint256 shipmentId
-        ) {
-            if (shipmentId > 0) {
-                ShipmentRegistry.ShipmentInfo
-                    memory shipmentInfo = shipmentRegistry.getShipmentInfo(
-                        shipmentId
-                    );
+        address shipmentAddress = findShipmentByProduct(_productAddress);
 
-                if (
-                    shipmentInfo.status ==
-                    ShipmentRegistry.ShipmentStatus.CANCELLED ||
-                    shipmentInfo.status ==
-                    ShipmentRegistry.ShipmentStatus.UNABLE_TO_DELIVERED
-                ) {
-                    emit ShipmentVerificationPerformed(
-                        shipmentId,
-                        _productId,
-                        false,
-                        block.timestamp
-                    );
-                    return (false, "Product valid but shipment has issues");
-                } else {
-                    emit ShipmentVerificationPerformed(
-                        shipmentId,
-                        _productId,
-                        true,
-                        block.timestamp
-                    );
-                    return (
-                        true,
-                        "Product and shipment both verified successfully"
-                    );
-                }
+        if (shipmentAddress != address(0)) {
+            Shipment shipment = Shipment(shipmentAddress);
+            Shipment.ShipmentStatus status = shipment.status();
+
+            if (
+                status == Shipment.ShipmentStatus.CANCELLED ||
+                status == Shipment.ShipmentStatus.UNABLE_TO_DELIVERED
+            ) {
+                emit ShipmentVerificationPerformed(
+                    shipmentAddress,
+                    _productAddress,
+                    false,
+                    block.timestamp
+                );
+                return (false, "Product valid but shipment has issues");
             } else {
-                return (true, "Product verified, no shipment data available");
+                emit ShipmentVerificationPerformed(
+                    shipmentAddress,
+                    _productAddress,
+                    true,
+                    block.timestamp
+                );
+                return (
+                    true,
+                    "Product and shipment both verified successfully"
+                );
             }
-        } catch {
+        } else {
             return (true, "Product verified, no shipment data available");
         }
     }
 
     function getTraceabilityReport(
-        uint256 _productId
+        address _productAddress
     )
         external
         view
         returns (
-            ProductRegistry.ProductInfo memory productInfo,
-            StakeholderRegistry.StakeholderInfo memory farmerInfo,
-            StakeholderRegistry.StakeholderInfo memory processorInfo,
-            StakeholderRegistry.StakeholderInfo memory distributorInfo,
-            StakeholderRegistry.StakeholderInfo memory retailerInfo,
+            string memory productName,
+            address farmer,
+            StakeholderInfo memory farmerInfo,
+            StakeholderInfo memory processorInfo,
+            StakeholderInfo memory distributorInfo,
+            StakeholderInfo memory retailerInfo,
             bool isFullyTraced
         )
     {
-        try productRegistry.getProductJourney(_productId) returns (
-            ProductRegistry.ProductInfo memory product,
-            ProductRegistry.StageData memory farmStage,
-            ProductRegistry.StageData memory processingStage,
-            ProductRegistry.StageData memory distributionStage,
-            ProductRegistry.StageData memory retailStage
+        try Product(_productAddress).getProductJourney() returns (
+            Product.StageData memory farmStage,
+            Product.StageData memory processingStage,
+            Product.StageData memory distributionStage,
+            Product.StageData memory retailStage
         ) {
-            StakeholderRegistry.StakeholderInfo memory farmer;
-            StakeholderRegistry.StakeholderInfo memory processor;
-            StakeholderRegistry.StakeholderInfo memory distributor;
-            StakeholderRegistry.StakeholderInfo memory retailer;
+            Product product = Product(_productAddress);
+            productName = product.name();
+            farmer = product.farmer();
+
+            StakeholderInfo memory farmerStakeholder;
+            StakeholderInfo memory processor;
+            StakeholderInfo memory distributor;
+            StakeholderInfo memory retailer;
 
             if (farmStage.timestamp > 0) {
-                farmer = stakeholderRegistry.getStakeholderInfo(
-                    farmStage.stakeholder
-                );
+                (
+                    address addr,
+                    Stakeholder.StakeholderRole role,
+                    string memory name,
+                    string memory license,
+                    string memory location,
+                    string memory certs,
+                    bool active,
+                    uint256 registered,
+                    uint256 activity
+                ) = stakeholderRegistry.getStakeholderInfo(
+                        farmStage.stakeholder
+                    );
+
+                farmerStakeholder = StakeholderInfo({
+                    stakeholderAddress: addr,
+                    role: role,
+                    businessName: name,
+                    businessLicense: license,
+                    location: location,
+                    certifications: certs,
+                    isActive: active,
+                    registeredAt: registered,
+                    lastActivity: activity
+                });
             }
 
             if (processingStage.timestamp > 0) {
-                processor = stakeholderRegistry.getStakeholderInfo(
-                    processingStage.stakeholder
-                );
+                (
+                    address addr,
+                    Stakeholder.StakeholderRole role,
+                    string memory name,
+                    string memory license,
+                    string memory location,
+                    string memory certs,
+                    bool active,
+                    uint256 registered,
+                    uint256 activity
+                ) = stakeholderRegistry.getStakeholderInfo(
+                        processingStage.stakeholder
+                    );
+
+                processor = StakeholderInfo({
+                    stakeholderAddress: addr,
+                    role: role,
+                    businessName: name,
+                    businessLicense: license,
+                    location: location,
+                    certifications: certs,
+                    isActive: active,
+                    registeredAt: registered,
+                    lastActivity: activity
+                });
             }
 
             if (distributionStage.timestamp > 0) {
-                distributor = stakeholderRegistry.getStakeholderInfo(
-                    distributionStage.stakeholder
-                );
+                (
+                    address addr,
+                    Stakeholder.StakeholderRole role,
+                    string memory name,
+                    string memory license,
+                    string memory location,
+                    string memory certs,
+                    bool active,
+                    uint256 registered,
+                    uint256 activity
+                ) = stakeholderRegistry.getStakeholderInfo(
+                        distributionStage.stakeholder
+                    );
+
+                distributor = StakeholderInfo({
+                    stakeholderAddress: addr,
+                    role: role,
+                    businessName: name,
+                    businessLicense: license,
+                    location: location,
+                    certifications: certs,
+                    isActive: active,
+                    registeredAt: registered,
+                    lastActivity: activity
+                });
             }
 
             if (retailStage.timestamp > 0) {
-                retailer = stakeholderRegistry.getStakeholderInfo(
-                    retailStage.stakeholder
-                );
+                (
+                    address addr,
+                    Stakeholder.StakeholderRole role,
+                    string memory name,
+                    string memory license,
+                    string memory location,
+                    string memory certs,
+                    bool active,
+                    uint256 registered,
+                    uint256 activity
+                ) = stakeholderRegistry.getStakeholderInfo(
+                        retailStage.stakeholder
+                    );
+
+                retailer = StakeholderInfo({
+                    stakeholderAddress: addr,
+                    role: role,
+                    businessName: name,
+                    businessLicense: license,
+                    location: location,
+                    certifications: certs,
+                    isActive: active,
+                    registeredAt: registered,
+                    lastActivity: activity
+                });
             }
 
+            Product.ProductStage currentStage = product.currentStage();
             bool fullyTraced = (farmStage.timestamp > 0 &&
-                (product.currentStage == ProductRegistry.ProductStage.FARM ||
+                (currentStage == Product.ProductStage.FARM ||
                     processingStage.timestamp > 0) &&
-                (product.currentStage <=
-                    ProductRegistry.ProductStage.PROCESSING ||
+                (currentStage <= Product.ProductStage.PROCESSING ||
                     distributionStage.timestamp > 0) &&
-                (product.currentStage <=
-                    ProductRegistry.ProductStage.DISTRIBUTION ||
+                (currentStage <= Product.ProductStage.DISTRIBUTION ||
                     retailStage.timestamp > 0));
 
             return (
-                product,
+                productName,
                 farmer,
+                farmerStakeholder,
                 processor,
                 distributor,
                 retailer,
@@ -307,10 +389,10 @@ contract PublicVerification {
             );
         } catch {
             // Return empty data for non-existent products
-            StakeholderRegistry.StakeholderInfo memory emptyStakeholder;
-            ProductRegistry.ProductInfo memory emptyProduct;
+            StakeholderInfo memory emptyStakeholder;
             return (
-                emptyProduct,
+                "",
+                address(0),
                 emptyStakeholder,
                 emptyStakeholder,
                 emptyStakeholder,
@@ -321,213 +403,189 @@ contract PublicVerification {
     }
 
     function getCompleteTraceabilityReport(
-        uint256 _productId
+        address _productAddress
     )
         external
         view
         returns (
-            ProductRegistry.ProductInfo memory productInfo,
-            StakeholderRegistry.StakeholderInfo memory farmerInfo,
-            StakeholderRegistry.StakeholderInfo memory processorInfo,
-            StakeholderRegistry.StakeholderInfo memory distributorInfo,
-            StakeholderRegistry.StakeholderInfo memory retailerInfo,
+            string memory productName,
+            address farmer,
+            StakeholderInfo memory farmerInfo,
+            StakeholderInfo memory processorInfo,
+            StakeholderInfo memory distributorInfo,
+            StakeholderInfo memory retailerInfo,
             bool isFullyTraced,
             bool hasShipment,
-            ShipmentRegistry.ShipmentInfo memory shipmentInfo,
-            ShipmentRegistry.ShipmentUpdate[] memory shipmentHistory
+            address shipmentAddress,
+            Shipment.ShipmentUpdate[] memory shipmentHistory
         )
     {
         (
-            productInfo,
+            productName,
+            farmer,
             farmerInfo,
             processorInfo,
             distributorInfo,
             retailerInfo,
             isFullyTraced
-        ) = this.getTraceabilityReport(_productId);
+        ) = this.getTraceabilityReport(_productAddress);
 
-        try shipmentRegistry.getShipmentByProduct(_productId) returns (
-            uint256 shipmentId
-        ) {
-            if (shipmentId > 0) {
-                hasShipment = true;
-                shipmentInfo = shipmentRegistry.getShipmentInfo(shipmentId);
-                shipmentHistory = shipmentRegistry.getShipmentHistory(
-                    shipmentId
-                );
-            }
-        } catch {
-            hasShipment = false;
+        shipmentAddress = findShipmentByProduct(_productAddress);
+        if (shipmentAddress != address(0)) {
+            hasShipment = true;
+            Shipment shipment = Shipment(shipmentAddress);
+            shipmentHistory = shipment.getShipmentHistory();
         }
 
         return (
-            productInfo,
+            productName,
+            farmer,
             farmerInfo,
             processorInfo,
             distributorInfo,
             retailerInfo,
             isFullyTraced,
             hasShipment,
-            shipmentInfo,
+            shipmentAddress,
             shipmentHistory
         );
     }
 
-    function verifyProduct(uint256 _productId) external view returns (bool) {
-        try productRegistry.verifyProduct(_productId) returns (
-            bool valid,
-            ProductRegistry.ProductInfo memory product
-        ) {
-            if (!valid) {
-                return false;
-            }
-            if (
-                !stakeholderRegistry.isRegisteredStakeholder(
-                    product.farmer,
-                    StakeholderRegistry.StakeholderRole.FARMER
-                )
-            ) {
-                return false;
-            }
-            return true;
-        } catch {
-            return false;
-        }
-    }
-
-    function performAudit(
-        uint256 _productId,
-        string memory _auditResult
-    ) external {
-        emit AuditPerformed(
-            msg.sender,
-            _productId,
-            _auditResult,
-            block.timestamp
-        );
-    }
-
-    function getTransparencyMetrics()
-        external
-        view
-        returns (
-            uint256 totalProducts,
-            uint256 totalStakeholders,
-            uint256 totalFarmers,
-            uint256 totalProcessors,
-            uint256 totalDistributors,
-            uint256 totalRetailers,
-            uint256 totalShipments
-        )
-    {
-        (totalProducts, , , , , ) = productRegistry.getSupplyChainStats();
-        totalStakeholders = stakeholderRegistry.totalStakeholders();
-
-        address[] memory farmers = stakeholderRegistry.getStakeholdersByRole(
-            StakeholderRegistry.StakeholderRole.FARMER
-        );
-        address[] memory processors = stakeholderRegistry.getStakeholdersByRole(
-            StakeholderRegistry.StakeholderRole.PROCESSOR
-        );
-        address[] memory distributors = stakeholderRegistry
-            .getStakeholdersByRole(
-                StakeholderRegistry.StakeholderRole.DISTRIBUTOR
-            );
-        address[] memory retailers = stakeholderRegistry.getStakeholdersByRole(
-            StakeholderRegistry.StakeholderRole.RETAILER
-        );
-
-        (totalShipments, , , , , ) = shipmentRegistry.getShipmentStats();
-
-        return (
-            totalProducts,
-            totalStakeholders,
-            farmers.length,
-            processors.length,
-            distributors.length,
-            retailers.length,
-            totalShipments
-        );
-    }
-
-    function trackProductWithShipment(
+    function trackShipmentByTrackingNumber(
         string memory _trackingNumber
     )
         external
         view
         returns (
-            uint256 productId,
-            ProductRegistry.ProductStage productStage,
-            ShipmentRegistry.ShipmentStatus shipmentStatus,
+            address shipmentAddress,
+            address productAddress,
+            Product.ProductStage productStage,
+            Shipment.ShipmentStatus shipmentStatus,
             string memory productName,
             string memory statusDescription,
             bool isProductValid,
             bool isShipmentValid
         )
     {
-        try shipmentRegistry.trackShipment(_trackingNumber) returns (
-            uint256,
-            uint256 prodId,
-            ShipmentRegistry.ShipmentStatus status,
-            string memory desc,
-            ShipmentRegistry.ShipmentUpdate memory
-        ) {
-            productId = prodId;
-            shipmentStatus = status;
-            statusDescription = desc;
+        shipmentAddress = findShipmentByTrackingNumber(_trackingNumber);
+        require(
+            shipmentAddress != address(0),
+            "Invalid tracking number or shipment not found"
+        );
 
-            ProductRegistry.ProductInfo memory productInfo = productRegistry
-                .getProductInfo(productId);
-            productStage = productInfo.currentStage;
-            productName = productInfo.productName;
+        Shipment shipment = Shipment(shipmentAddress);
+        productAddress = shipment.productAddress();
+        shipmentStatus = shipment.status();
+        statusDescription = shipment.getStatusDescription();
 
-            (isProductValid, ) = productRegistry.verifyProduct(productId);
+        Product product = Product(productAddress);
+        productStage = product.currentStage();
+        productName = product.name();
 
-            isShipmentValid = !(status ==
-                ShipmentRegistry.ShipmentStatus.CANCELLED ||
-                status == ShipmentRegistry.ShipmentStatus.UNABLE_TO_DELIVERED);
+        isProductValid = product.verifyProduct();
 
-            return (
-                productId,
-                productStage,
-                shipmentStatus,
-                productName,
-                statusDescription,
-                isProductValid,
-                isShipmentValid
-            );
-        } catch {
-            revert("Invalid tracking number or shipment not found");
-        }
+        isShipmentValid = !(shipmentStatus ==
+            Shipment.ShipmentStatus.CANCELLED ||
+            shipmentStatus == Shipment.ShipmentStatus.UNABLE_TO_DELIVERED);
+
+        return (
+            shipmentAddress,
+            productAddress,
+            productStage,
+            shipmentStatus,
+            productName,
+            statusDescription,
+            isProductValid,
+            isShipmentValid
+        );
     }
 
-    function getSystemOverview()
+    function performAudit(
+        address _productAddress,
+        string memory _auditResult
+    ) external {
+        require(
+            stakeholderRegistry.isActiveStakeholder(msg.sender),
+            "Only registered stakeholders can perform audits"
+        );
+
+        emit AuditPerformed(
+            msg.sender,
+            _productAddress,
+            _auditResult,
+            block.timestamp
+        );
+    }
+
+    function getShipmentInfo(
+        address _shipmentAddress
+    )
         external
         view
         returns (
-            uint256 totalProducts,
-            uint256 totalShipments,
-            uint256 totalStakeholders,
-            uint256 activeProducts,
-            uint256 shipmentsInTransit,
-            string memory systemStatus
+            address product,
+            address sender,
+            address receiver,
+            string memory trackingNumber,
+            string memory transportMode,
+            Shipment.ShipmentStatus status,
+            uint256 createdAt,
+            uint256 lastUpdated,
+            bool isActive
         )
     {
-        (totalProducts, , , , , ) = productRegistry.getSupplyChainStats();
-        (totalShipments, , shipmentsInTransit, , , ) = shipmentRegistry
-            .getShipmentStats();
-        totalStakeholders = stakeholderRegistry.totalStakeholders();
-
-        activeProducts = totalProducts;
-        systemStatus = "Operational - Public verification available";
-
-        return (
-            totalProducts,
-            totalShipments,
-            totalStakeholders,
-            activeProducts,
-            shipmentsInTransit,
-            systemStatus
+        require(
+            registry.isEntityRegistered(_shipmentAddress),
+            "Shipment not registered"
         );
+
+        Shipment shipment = Shipment(_shipmentAddress);
+        return shipment.getShipmentInfo();
+    }
+
+    // Helper functions to find shipments (application-layer logic)
+    function findShipmentByProduct(
+        address _productAddress
+    ) public view returns (address) {
+        address[] memory allShipments = registry.getAllShipments();
+
+        for (uint256 i = 0; i < allShipments.length; i++) {
+            try Shipment(allShipments[i]).productAddress() returns (
+                address productAddr
+            ) {
+                if (productAddr == _productAddress) {
+                    return allShipments[i];
+                }
+            } catch {
+                // Skip invalid shipments
+                continue;
+            }
+        }
+
+        return address(0);
+    }
+
+    function findShipmentByTrackingNumber(
+        string memory _trackingNumber
+    ) public view returns (address) {
+        address[] memory allShipments = registry.getAllShipments();
+
+        for (uint256 i = 0; i < allShipments.length; i++) {
+            try Shipment(allShipments[i]).trackingNumber() returns (
+                string memory trackingNum
+            ) {
+                if (
+                    keccak256(bytes(trackingNum)) ==
+                    keccak256(bytes(_trackingNumber))
+                ) {
+                    return allShipments[i];
+                }
+            } catch {
+                // Skip invalid shipments
+                continue;
+            }
+        }
+
+        return address(0);
     }
 }

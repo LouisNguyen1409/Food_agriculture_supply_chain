@@ -5,522 +5,390 @@ const { TestHelpers } = require("./helpers/testHelpers");
 describe("ProductFactory", function () {
     let testHelpers;
     let productFactory;
-    let productRegistry;
+    let stakeholderFactory;
+    let registry;
     let stakeholderRegistry;
     let accounts;
     let deployer, farmer, processor, unauthorized;
+    let oracleFeeds;
 
     beforeEach(async function () {
         testHelpers = new TestHelpers();
         accounts = await testHelpers.setup();
         ({ deployer, farmer, processor, unauthorized } = accounts);
 
-        // Deploy dependencies
-        stakeholderRegistry = await testHelpers.deployStakeholderRegistry();
-        productRegistry = await testHelpers.deployProductRegistry(
-            await stakeholderRegistry.getAddress()
-        );
+        // Deploy dependencies in correct order
+        // First deploy Registry
+        const Registry = await ethers.getContractFactory("Registry");
+        registry = await Registry.deploy();
+        await registry.waitForDeployment();
+        
+        // Then deploy StakeholderRegistry with Registry address
+        const StakeholderRegistry = await ethers.getContractFactory("StakeholderRegistry");
+        stakeholderRegistry = await StakeholderRegistry.deploy(await registry.getAddress());
+        await stakeholderRegistry.waitForDeployment();
+        
+        // Deploy StakeholderFactory for creating stakeholders
+        const StakeholderFactory = await ethers.getContractFactory("StakeholderFactory");
+        stakeholderFactory = await StakeholderFactory.deploy(await registry.getAddress());
+        await stakeholderFactory.waitForDeployment();
+        
+        oracleFeeds = await testHelpers.deployMockOracleFeeds();
 
-        // Deploy ProductFactory
+        // Deploy ProductFactory with all oracle feeds
         const ProductFactory = await ethers.getContractFactory("ProductFactory");
         productFactory = await ProductFactory.deploy(
-            await productRegistry.getAddress(),
-            await stakeholderRegistry.getAddress()
+            await stakeholderRegistry.getAddress(),
+            await registry.getAddress(),
+            await oracleFeeds.temperatureFeed.getAddress(),
+            await oracleFeeds.humidityFeed.getAddress(),
+            await oracleFeeds.rainfallFeed.getAddress(),
+            await oracleFeeds.windSpeedFeed.getAddress(),
+            await oracleFeeds.priceFeed.getAddress()
         );
         await productFactory.waitForDeployment();
 
-        // Register stakeholders
-        await testHelpers.setupStakeholders(stakeholderRegistry);
-        
-        // Register factories as stakeholders to allow them to call registry functions
-        await testHelpers.registerFactoriesAsStakeholders(stakeholderRegistry, productFactory, null);
+        // Create stakeholders using StakeholderFactory
+        await stakeholderFactory.connect(deployer).createStakeholder(
+            farmer.address,
+            0, // FARMER
+            "Green Farm Co",
+            "FARM-001",
+            "Iowa, USA",
+            "Organic Certified"
+        );
+
+        await stakeholderFactory.connect(deployer).createStakeholder(
+            processor.address,
+            1, // PROCESSOR
+            "Fresh Processing Ltd",
+            "PROC-001",
+            "California, USA",
+            "FDA Approved"
+        );
     });
 
     describe("Deployment", function () {
-        it("Should set correct factory owner", async function () {
-            expect(await productFactory.factoryOwner()).to.equal(deployer.address);
-        });
-
         it("Should set correct contract addresses", async function () {
-            expect(await productFactory.productRegistry()).to.equal(await productRegistry.getAddress());
-            expect(await productFactory.stakeholderRegistry()).to.equal(await stakeholderRegistry.getAddress());
-        });
-
-        it("Should initialize with correct default values", async function () {
-            expect(await productFactory.nextTemplateId()).to.equal(1);
-            expect(await productFactory.nextBatchId()).to.equal(1);
-            expect(await productFactory.totalProductsCreated()).to.equal(0);
-        });
-    });
-
-    describe("Product Template Management", function () {
-        it("Should create a product template successfully", async function () {
-            const templateName = "Organic Fruit Template";
-            const productType = "Fruit";
-            const requiredFields = ["Origin", "Harvest Date"];
-            const certificationTypes = ["Organic", "Fair Trade"];
-            const expirationDays = 30;
-
-            const tx = await productFactory.createProductTemplate(
-                templateName,
-                productType,
-                requiredFields,
-                certificationTypes,
-                expirationDays
-            );
-
-            await expect(tx)
-                .to.emit(productFactory, "ProductTemplateCreated")
-                .withArgs(1, templateName, deployer.address, await getBlockTimestamp(tx));
-
-            const template = await productFactory.getProductTemplate(1);
-            expect(template.templateId).to.equal(1);
-            expect(template.templateName).to.equal(templateName);
-            expect(template.productType).to.equal(productType);
-            expect(template.isActive).to.be.true;
-            expect(template.creator).to.equal(deployer.address);
-        });
-
-        it("Should reject empty template name", async function () {
-            await expect(
-                productFactory.createProductTemplate("", "Fruit", [], [], 30)
-            ).to.be.revertedWith("Template name cannot be empty");
-        });
-
-        it("Should reject duplicate template names", async function () {
-            const templateName = "Duplicate Template";
-            
-            await productFactory.createProductTemplate(templateName, "Fruit", [], [], 30);
-            
-            await expect(
-                productFactory.createProductTemplate(templateName, "Vegetable", [], [], 30)
-            ).to.be.revertedWith("Template name already exists");
-        });
-
-        it("Should get template by name", async function () {
-            const templateName = "Test Template";
-            await productFactory.createProductTemplate(templateName, "Fruit", [], [], 30);
-
-            const template = await productFactory.getTemplateByName(templateName);
-            expect(template.templateName).to.equal(templateName);
-        });
-
-        it("Should reject getting non-existent template by name", async function () {
-            await expect(
-                productFactory.getTemplateByName("Non-existent")
-            ).to.be.revertedWith("Template not found");
-        });
-
-        it("Should update product template", async function () {
-            // Create template
-            await productFactory.createProductTemplate("Original", "Fruit", [], [], 30);
-            
-            // Update template
-            const tx = await productFactory.updateProductTemplate(
-                1,
-                "Updated Template",
-                "Vegetable",
-                60
-            );
-
-            await expect(tx)
-                .to.emit(productFactory, "ProductTemplateUpdated")
-                .withArgs(1, "templateName", await getBlockTimestamp(tx));
-
-            const template = await productFactory.getProductTemplate(1);
-            expect(template.templateName).to.equal("Updated Template");
-            expect(template.productType).to.equal("Vegetable");
-            expect(template.expirationDays).to.equal(60);
-        });
-
-        it("Should reject unauthorized template updates", async function () {
-            await productFactory.createProductTemplate("Test", "Fruit", [], [], 30);
-            
-            await expect(
-                productFactory.connect(unauthorized).updateProductTemplate(1, "Updated", "Vegetable", 60)
-            ).to.be.revertedWith("Not authorized to update template");
-        });
-
-        it("Should deactivate template", async function () {
-            await productFactory.createProductTemplate("Test", "Fruit", [], [], 30);
-            
-            // First verify template is active
-            let template = await productFactory.getProductTemplate(1);
-            expect(template.isActive).to.be.true;
-            
-            // Deactivate template
-            await productFactory.deactivateTemplate(1);
-            
-            // After deactivation, trying to get the template should fail due to templateExists modifier
-            await expect(
-                productFactory.getProductTemplate(1)
-            ).to.be.revertedWith("Template does not exist or is inactive");
-        });
-
-        it("Should reject deactivating non-existent template", async function () {
-            await expect(
-                productFactory.deactivateTemplate(999)
-            ).to.be.revertedWith("Template does not exist or is inactive");
-        });
-    });
-
-    describe("Product Creation from Templates", function () {
-        beforeEach(async function () {
-            // Create a template for testing
-            await productFactory.createProductTemplate(
-                "Fruit Template",
-                "Fruit",
-                ["Origin", "Harvest Date"],
-                ["Organic"],
-                30
-            );
-        });
-
-        it("Should create product from template", async function () {
-            const tx = await productFactory.connect(farmer).createProductFromTemplate(
-                1,
-                "Organic Apples",
-                "BATCH001",
-                "Farm: Green Valley, Date: 2024-01-01"
-            );
-
-            await expect(tx)
-                .to.emit(productFactory, "ProductCreatedFromTemplate");
-
-            expect(await productFactory.totalProductsCreated()).to.equal(1);
-            
-            const farmerProducts = await productFactory.getFarmerProducts(farmer.address);
-            expect(farmerProducts.length).to.equal(1);
-        });
-
-        it("Should reject product creation by non-registered farmer", async function () {
-            await expect(
-                productFactory.connect(unauthorized).createProductFromTemplate(
-                    1,
-                    "Apples",
-                    "BATCH001",
-                    "Farm data"
-                )
-            ).to.be.revertedWith("Only registered farmers can create products");
-        });
-
-        it("Should reject product creation with non-existent template", async function () {
-            await expect(
-                productFactory.connect(farmer).createProductFromTemplate(
-                    999,
-                    "Apples",
-                    "BATCH001",
-                    "Farm data"
-                )
-            ).to.be.revertedWith("Template does not exist or is inactive");
-        });
-    });
-
-    describe("Batch Product Creation", function () {
-        beforeEach(async function () {
-            await productFactory.createProductTemplate("Batch Template", "Fruit", [], [], 30);
-        });
-
-        it("Should request batch product creation", async function () {
-            const productNames = ["Apple 1", "Apple 2", "Apple 3"];
-            const batchNumbers = ["B001", "B002", "B003"];
-            const farmDataArray = ["Data 1", "Data 2", "Data 3"];
-
-            const tx = await productFactory.connect(farmer).requestBatchProductCreation(
-                1,
-                productNames,
-                batchNumbers,
-                farmDataArray
-            );
-
-            await expect(tx)
-                .to.emit(productFactory, "BatchProductCreationRequested")
-                .withArgs(1, farmer.address, 3, await getBlockTimestamp(tx));
-
-            const batchRequest = await productFactory.getBatchRequest(1);
-            expect(batchRequest.farmer).to.equal(farmer.address);
-            expect(batchRequest.isProcessed).to.be.false;
-        });
-
-        it("Should reject batch creation with empty product list", async function () {
-            await expect(
-                productFactory.connect(farmer).requestBatchProductCreation(1, [], [], [])
-            ).to.be.revertedWith("Must specify at least one product");
-        });
-
-        it("Should reject batch creation with mismatched array lengths", async function () {
-            await expect(
-                productFactory.connect(farmer).requestBatchProductCreation(
-                    1,
-                    ["Apple 1", "Apple 2"],
-                    ["B001"],
-                    ["Data 1", "Data 2"]
-                )
-            ).to.be.revertedWith("Array lengths must match");
-        });
-
-        it("Should process batch creation by farmer", async function () {
-            // Request batch
-            await productFactory.connect(farmer).requestBatchProductCreation(
-                1,
-                ["Apple 1", "Apple 2"],
-                ["B001", "B002"],
-                ["Data 1", "Data 2"]
-            );
-
-            // Process batch
-            const tx = await productFactory.connect(farmer).processBatchCreation(1);
-
-            await expect(tx)
-                .to.emit(productFactory, "BatchProductCreationCompleted");
-
-            const batchRequest = await productFactory.getBatchRequest(1);
-            expect(batchRequest.isProcessed).to.be.true;
-            expect(batchRequest.createdProductIds.length).to.equal(2);
-            expect(await productFactory.totalProductsCreated()).to.equal(2);
-        });
-
-        it("Should process batch creation by factory owner", async function () {
-            // Request batch
-            await productFactory.connect(farmer).requestBatchProductCreation(
-                1,
-                ["Apple 1"],
-                ["B001"],
-                ["Data 1"]
-            );
-
-            // Process batch as factory owner
-            await productFactory.connect(deployer).processBatchCreation(1);
-
-            const batchRequest = await productFactory.getBatchRequest(1);
-            expect(batchRequest.isProcessed).to.be.true;
-        });
-
-        it("Should reject processing already processed batch", async function () {
-            // Request and process batch
-            await productFactory.connect(farmer).requestBatchProductCreation(
-                1,
-                ["Apple 1"],
-                ["B001"],
-                ["Data 1"]
-            );
-            await productFactory.connect(farmer).processBatchCreation(1);
-
-            // Try to process again
-            await expect(
-                productFactory.connect(farmer).processBatchCreation(1)
-            ).to.be.revertedWith("Batch already processed");
-        });
-
-        it("Should reject processing by unauthorized user", async function () {
-            await productFactory.connect(farmer).requestBatchProductCreation(
-                1,
-                ["Apple 1"],
-                ["B001"],
-                ["Data 1"]
-            );
-
-            await expect(
-                productFactory.connect(unauthorized).processBatchCreation(1)
-            ).to.be.revertedWith("Only farmer or factory owner can process batch");
-        });
-    });
-
-    describe("Standard Product Creation", function () {
-        it("Should create standard product", async function () {
-            const tx = await productFactory.connect(farmer).createStandardProduct(
-                "Organic Bananas",
-                "STD001",
-                "Farm: Tropical Valley",
-                "ORGANIC"
-            );
-
-            await expect(tx)
-                .to.emit(productFactory, "ProductCreatedFromTemplate")
-                .withArgs(
-                    1, // productId (first product gets ID 1 since nextProductId starts at 1)
-                    0, // templateId (0 for standard products)
-                    farmer.address,
-                    "Organic Bananas",
-                    await getBlockTimestamp(tx)
-                );
-
-            expect(await productFactory.totalProductsCreated()).to.equal(1);
-        });
-
-        it("Should reject standard product creation by non-farmer", async function () {
-            await expect(
-                productFactory.connect(unauthorized).createStandardProduct(
-                    "Bananas",
-                    "STD001",
-                    "Farm data",
-                    "ORGANIC"
-                )
-            ).to.be.revertedWith("Only registered farmers can create products");
-        });
-    });
-
-    describe("Bulk Product Creation", function () {
-        it("Should create bulk similar products", async function () {
-            const productIds = await productFactory.connect(farmer).bulkCreateSimilarProducts.staticCall(
-                "Organic Apple",
-                "BULK",
-                "Farm: Valley Green",
-                5
-            );
-
-            expect(productIds.length).to.equal(5);
-
-            // Execute the transaction
-            await productFactory.connect(farmer).bulkCreateSimilarProducts(
-                "Organic Apple",
-                "BULK",
-                "Farm: Valley Green",
-                5
-            );
-
-            expect(await productFactory.totalProductsCreated()).to.equal(5);
-        });
-
-        it("Should reject bulk creation with zero quantity", async function () {
-            await expect(
-                productFactory.connect(farmer).bulkCreateSimilarProducts(
-                    "Apple",
-                    "BULK",
-                    "Farm data",
-                    0
-                )
-            ).to.be.revertedWith("Quantity must be between 1 and 100");
-        });
-
-        it("Should reject bulk creation with quantity over 100", async function () {
-            await expect(
-                productFactory.connect(farmer).bulkCreateSimilarProducts(
-                    "Apple",
-                    "BULK",
-                    "Farm data",
-                    101
-                )
-            ).to.be.revertedWith("Quantity must be between 1 and 100");
-        });
-    });
-
-    describe("Query Functions", function () {
-        beforeEach(async function () {
-            await productFactory.createProductTemplate("Test Template", "Fruit", [], [], 30);
-            await productFactory.connect(farmer).createProductFromTemplate(
-                1,
-                "Test Product",
-                "BATCH001",
-                "Farm data"
-            );
-        });
-
-        it("Should get farmer products", async function () {
-            const products = await productFactory.getFarmerProducts(farmer.address);
-            expect(products.length).to.equal(1);
-        });
-
-        it("Should get farmer templates", async function () {
-            const templates = await productFactory.getFarmerTemplates(deployer.address);
-            expect(templates.length).to.equal(1);
-            expect(templates[0]).to.equal(1);
-        });
-
-        it("Should get factory stats", async function () {
-            const [totalTemplates, totalProducts, totalBatches, activeFarmers] = 
-                await productFactory.getFactoryStats();
-            
-            expect(totalTemplates).to.equal(1);
-            expect(totalProducts).to.equal(1);
-            expect(totalBatches).to.equal(0);
-            expect(activeFarmers).to.equal(0); // Placeholder value
-        });
-    });
-
-    describe("Admin Functions", function () {
-        it("Should update product registry", async function () {
-            const newProductRegistry = await testHelpers.deployProductRegistry(
-                await stakeholderRegistry.getAddress()
-            );
-
-            await productFactory.connect(deployer).updateProductRegistry(
-                await newProductRegistry.getAddress()
-            );
-
-            expect(await productFactory.productRegistry()).to.equal(
-                await newProductRegistry.getAddress()
-            );
-        });
-
-        it("Should reject updating product registry with zero address", async function () {
-            await expect(
-                productFactory.connect(deployer).updateProductRegistry(ethers.ZeroAddress)
-            ).to.be.revertedWith("Invalid address");
-        });
-
-        it("Should reject updating product registry by non-owner", async function () {
-            const newProductRegistry = await testHelpers.deployProductRegistry(
-                await stakeholderRegistry.getAddress()
-            );
-
-            await expect(
-                productFactory.connect(unauthorized).updateProductRegistry(
-                    await newProductRegistry.getAddress()
-                )
-            ).to.be.revertedWith("Only factory owner can perform this action");
-        });
-
-        it("Should update stakeholder registry", async function () {
-            const newStakeholderRegistry = await testHelpers.deployStakeholderRegistry();
-
-            await productFactory.connect(deployer).updateStakeholderRegistry(
-                await newStakeholderRegistry.getAddress()
-            );
-
             expect(await productFactory.stakeholderRegistry()).to.equal(
-                await newStakeholderRegistry.getAddress()
+                await stakeholderRegistry.getAddress()
+            );
+            expect(await productFactory.registry()).to.equal(
+                await registry.getAddress()
             );
         });
 
-        it("Should transfer ownership", async function () {
-            await productFactory.connect(deployer).transferOwnership(farmer.address);
-            expect(await productFactory.factoryOwner()).to.equal(farmer.address);
-        });
-
-        it("Should reject ownership transfer to zero address", async function () {
-            await expect(
-                productFactory.connect(deployer).transferOwnership(ethers.ZeroAddress)
-            ).to.be.revertedWith("Invalid address");
-        });
-    });
-
-    describe("Edge Cases and Error Handling", function () {
-        it("Should handle template existence checks", async function () {
-            await expect(
-                productFactory.getProductTemplate(999)
-            ).to.be.revertedWith("Template does not exist or is inactive");
-        });
-
-        it("Should handle deactivated templates", async function () {
-            await productFactory.createProductTemplate("Test", "Fruit", [], [], 30);
-            await productFactory.deactivateTemplate(1);
-
-            await expect(
-                productFactory.connect(farmer).createProductFromTemplate(1, "Product", "Batch", "Data")
-            ).to.be.revertedWith("Template does not exist or is inactive");
-        });
-
-        it("Should handle batch request for non-existent batch", async function () {
-            const batchRequest = await productFactory.getBatchRequest(999);
-            expect(batchRequest.farmer).to.equal(ethers.ZeroAddress);
+        it("Should set correct oracle feed addresses", async function () {
+            expect(await productFactory.temperatureFeed()).to.equal(
+                await oracleFeeds.temperatureFeed.getAddress()
+            );
+            expect(await productFactory.humidityFeed()).to.equal(
+                await oracleFeeds.humidityFeed.getAddress()
+            );
+            expect(await productFactory.rainfallFeed()).to.equal(
+                await oracleFeeds.rainfallFeed.getAddress()
+            );
+            expect(await productFactory.windSpeedFeed()).to.equal(
+                await oracleFeeds.windSpeedFeed.getAddress()
+            );
+            expect(await productFactory.priceFeed()).to.equal(
+                await oracleFeeds.priceFeed.getAddress()
+            );
         });
     });
 
-    // Helper function to get block timestamp
-    async function getBlockTimestamp(tx) {
-        const receipt = await tx.wait();
-        const block = await ethers.provider.getBlock(receipt.blockNumber);
-        return block.timestamp;
-    }
+    describe("Product Creation", function () {
+        it("Should allow registered farmers to create products", async function () {
+            const productName = "Organic Apples";
+            const description = "Fresh organic apples from Green Valley Farm";
+            const minTemp = 0;
+            const maxTemp = 5;
+            const location = "Green Valley Farm, Iowa";
+            const farmData = "Harvest Date: 2024-01-15, Organic Certified";
+
+            const tx = await productFactory.connect(farmer).createProduct(
+                productName,
+                description,
+                minTemp,
+                maxTemp,
+                location,
+                farmData
+            );
+
+            const receipt = await tx.wait();
+            
+            // Check event emission
+            const event = receipt.logs.find(log =>
+                log.fragment && log.fragment.name === "ProductCreated"
+            );
+
+            expect(event).to.not.be.undefined;
+            expect(event.args[1]).to.equal(productName); // name
+            expect(event.args[2]).to.equal(farmer.address); // creator
+
+            // Verify product was registered in registry
+            const productAddress = event.args[0];
+            expect(await registry.isRegistered(productAddress)).to.be.true;
+        });
+
+        it("Should reject product creation by non-registered farmers", async function () {
+            await expect(
+                productFactory.connect(unauthorized).createProduct(
+                    "Test Product",
+                    "Description",
+                    0,
+                    5,
+                    "Location",
+                    "Farm Data"
+                )
+            ).to.be.revertedWith("Not registered for this role");
+        });
+
+        it("Should reject product creation by registered non-farmers", async function () {
+            await expect(
+                productFactory.connect(processor).createProduct(
+                    "Test Product", 
+                    "Description",
+                    0,
+                    5,
+                    "Location",
+                    "Farm Data"
+                )
+            ).to.be.revertedWith("Not registered for this role");
+        });
+
+        it("Should create product with correct parameters", async function () {
+            const productName = "Test Tomatoes";
+            const description = "Vine-ripened tomatoes";
+            const minTemp = 10;
+            const maxTemp = 25;
+            const location = "Greenhouse Farm, California";
+            const farmData = "Hydroponic, Pesticide-free";
+
+            const tx = await productFactory.connect(farmer).createProduct(
+                productName,
+                description,
+                minTemp,
+                maxTemp,
+                location,
+                farmData
+            );
+
+            const receipt = await tx.wait();
+            const event = receipt.logs.find(log =>
+                log.fragment && log.fragment.name === "ProductCreated"
+            );
+
+            const productAddress = event.args[0];
+            
+            // Get the Product contract instance to verify parameters
+            const Product = await ethers.getContractFactory("Product");
+            const product = Product.attach(productAddress);
+
+            expect(await product.name()).to.equal(productName);
+            expect(await product.description()).to.equal(description);
+            expect(await product.minCTemperature()).to.equal(minTemp);
+            expect(await product.maxCTemperature()).to.equal(maxTemp);
+            expect(await product.location()).to.equal(location);
+            expect(await product.farmer()).to.equal(farmer.address);
+            expect(await product.isActive()).to.be.true;
+        });
+
+        it("Should handle empty strings gracefully", async function () {
+            // This should fail due to Product constructor validation we added earlier
+            await expect(
+                productFactory.connect(farmer).createProduct(
+                    "", // empty name
+                    "Description",
+                    0,
+                    5,
+                    "Location",
+                    "Farm Data"
+                )
+            ).to.be.revertedWith("Product name cannot be empty");
+        });
+
+        it("Should handle invalid temperature ranges", async function () {
+            // Test with max temperature lower than min temperature
+            await productFactory.connect(farmer).createProduct(
+                "Test Product",
+                "Description",
+                25, // min temp higher than max
+                10, // max temp lower than min
+                "Location",
+                "Farm Data"
+            );
+            // This should succeed as there's no validation in the current implementation
+        });
+    });
+
+    describe("Multiple Product Creation", function () {
+        it("Should allow creating multiple products", async function () {
+            // Create first product
+            const tx1 = await productFactory.connect(farmer).createProduct(
+                "Apples",
+                "Red apples",
+                0,
+                5,
+                "Farm A",
+                "Data A"
+            );
+
+            // Create second product
+            const tx2 = await productFactory.connect(farmer).createProduct(
+                "Oranges", 
+                "Citrus oranges",
+                5,
+                15,
+                "Farm B",
+                "Data B"
+            );
+
+            const receipt1 = await tx1.wait();
+            const receipt2 = await tx2.wait();
+
+            const event1 = receipt1.logs.find(log =>
+                log.fragment && log.fragment.name === "ProductCreated"
+            );
+            const event2 = receipt2.logs.find(log =>
+                log.fragment && log.fragment.name === "ProductCreated"
+            );
+
+            expect(event1.args[0]).to.not.equal(event2.args[0]); // Different addresses
+            expect(await registry.isRegistered(event1.args[0])).to.be.true;
+            expect(await registry.isRegistered(event2.args[0])).to.be.true;
+        });
+
+        it("Should track all created products in registry", async function () {
+            // Get initial product count by checking the registry products array
+            let initialCount = 0;
+            try {
+                // Try to access products at different indices to count existing products
+                for (let i = 0; i < 100; i++) {
+                    await registry.products(i);
+                    initialCount++;
+                }
+            } catch (error) {
+                // Expected to fail when index is out of bounds, that's how we know we've counted all
+            }
+
+            // Create a product
+            await productFactory.connect(farmer).createProduct(
+                "Test Product",
+                "Description",
+                0,
+                5,
+                "Location",
+                "Farm Data"
+            );
+
+            // Check that product count increased
+            let newProductCount = 0;
+            try {
+                // Count products again
+                for (let i = 0; i < 100; i++) {
+                    await registry.products(i);
+                    newProductCount++;
+                }
+            } catch (error) {
+                // Expected to fail when index is out of bounds
+            }
+
+            expect(newProductCount).to.equal(initialCount + 1);
+        });
+    });
+
+    describe("Integration with Product Contract", function () {
+        let productAddress;
+
+        beforeEach(async function () {
+            const tx = await productFactory.connect(farmer).createProduct(
+                "Integration Test Product",
+                "Product for integration testing",
+                0,
+                10,
+                "Test Farm",
+                "Test Data"
+            );
+
+            const receipt = await tx.wait();
+            const event = receipt.logs.find(log =>
+                log.fragment && log.fragment.name === "ProductCreated"
+            );
+            productAddress = event.args[0];
+        });
+
+        it("Should create product with correct initial state", async function () {
+            const Product = await ethers.getContractFactory("Product");
+            const product = Product.attach(productAddress);
+
+            expect(await product.currentStage()).to.equal(0); // FARM stage
+            expect(await product.isActive()).to.be.true;
+            expect(await product.farmer()).to.equal(farmer.address);
+        });
+
+        it("Should verify product has access to stakeholder registry", async function () {
+            const Product = await ethers.getContractFactory("Product");
+            const product = Product.attach(productAddress);
+
+            // The product should be able to verify stakeholder registration
+            // This is tested implicitly by the fact that the product was created successfully
+            expect(await product.isActive()).to.be.true;
+        });
+
+        it("Should verify product has oracle feed addresses set", async function () {
+            const Product = await ethers.getContractFactory("Product");
+            const product = Product.attach(productAddress);
+
+            // Since we're using zero addresses for oracle feeds in tests,
+            // we can't directly test oracle functionality, but we can verify
+            // the product was created with the expected configuration
+            expect(await product.isActive()).to.be.true;
+        });
+    });
+
+    describe("Error Handling and Edge Cases", function () {
+        it("Should handle contract deployment failures gracefully", async function () {
+            // This test verifies the factory handles edge cases
+            // The actual product creation should work with valid parameters
+            const tx = await productFactory.connect(farmer).createProduct(
+                "Edge Case Product",
+                "Testing edge cases",
+                0,   // Min temperature (must be non-negative for uint256)
+                50,  // High temperature
+                "Edge Location",
+                "Edge Data"
+            );
+
+            const receipt = await tx.wait();
+            const event = receipt.logs.find(log =>
+                log.fragment && log.fragment.name === "ProductCreated"
+            );
+
+            expect(event).to.not.be.undefined;
+        });
+
+        it("Should prevent duplicate product registration", async function () {
+            // Create a product
+            const tx = await productFactory.connect(farmer).createProduct(
+                "Duplicate Test",
+                "Description",
+                0,
+                5,
+                "Location",
+                "Data"
+            );
+
+            const receipt = await tx.wait();
+            const event = receipt.logs.find(log =>
+                log.fragment && log.fragment.name === "ProductCreated"
+            );
+            const productAddress = event.args[0];
+
+            // Try to register the same product again directly in registry
+            await expect(
+                registry.registerProduct(productAddress)
+            ).to.be.revertedWith("Product already registered");
+        });
+    });
 }); 

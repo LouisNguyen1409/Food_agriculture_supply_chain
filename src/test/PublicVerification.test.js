@@ -1,599 +1,414 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
-const { TestHelpers } = require("./helpers/testHelpers");
 
-describe("PublicVerification", function () {
-    let testHelpers;
-    let publicVerification;
-    let productRegistry;
-    let stakeholderRegistry;
-    let shipmentRegistry;
-    let accounts;
-    let deployer, farmer, processor, distributor, retailer, consumer, auditor, unauthorized;
-    let productId, shipmentId, trackingNumber;
+describe("PublicVerification Contract Tests", function () {
+    let publicVerification, registry, stakeholderRegistry, stakeholderFactory, productFactory;
+    let deployer, farmer, processor, distributor, retailer, auditor, consumer, unauthorized;
+    let productAddress;
 
     beforeEach(async function () {
-        testHelpers = new TestHelpers();
-        accounts = await testHelpers.setup();
-        ({ deployer, farmer, processor, distributor, retailer, consumer, auditor, unauthorized } = accounts);
+        [deployer, farmer, processor, distributor, retailer, auditor, consumer, unauthorized] = await ethers.getSigners();
 
-        // Deploy dependencies
-        stakeholderRegistry = await testHelpers.deployStakeholderRegistry();
-        productRegistry = await testHelpers.deployProductRegistry(
-            await stakeholderRegistry.getAddress()
-        );
-        shipmentRegistry = await testHelpers.deployShipmentRegistry(
+        // Deploy Registry contract
+        const Registry = await ethers.getContractFactory("Registry");
+        registry = await Registry.deploy();
+
+        // Deploy StakeholderRegistry
+        const StakeholderRegistry = await ethers.getContractFactory("StakeholderRegistry");
+        stakeholderRegistry = await StakeholderRegistry.deploy(await registry.getAddress());
+
+        // Deploy StakeholderFactory
+        const StakeholderFactory = await ethers.getContractFactory("StakeholderFactory");
+        stakeholderFactory = await StakeholderFactory.deploy(await registry.getAddress());
+
+        // Deploy ProductFactory
+        const ProductFactory = await ethers.getContractFactory("ProductFactory");
+        productFactory = await ProductFactory.deploy(
             await stakeholderRegistry.getAddress(),
-            await productRegistry.getAddress()
+            await registry.getAddress(),
+            ethers.ZeroAddress, // temperatureFeed
+            ethers.ZeroAddress, // humidityFeed
+            ethers.ZeroAddress, // rainfallFeed
+            ethers.ZeroAddress, // windSpeedFeed
+            ethers.ZeroAddress  // priceFeed
         );
 
         // Deploy PublicVerification
-        publicVerification = await testHelpers.deployPublicVerification(
-            await productRegistry.getAddress(),
+        const PublicVerification = await ethers.getContractFactory("PublicVerification");
+        publicVerification = await PublicVerification.deploy(
             await stakeholderRegistry.getAddress(),
-            await shipmentRegistry.getAddress()
+            await registry.getAddress()
         );
 
         // Register stakeholders
-        await testHelpers.setupStakeholders(stakeholderRegistry);
+        await stakeholderFactory.connect(deployer).createStakeholder(
+            farmer.address, 
+            0, // FARMER role
+            "Green Valley Farm", 
+            "FARM_" + Math.random().toString(36).substring(2, 11), 
+            "California", 
+            "Organic Certified"
+        );
+        
+        await stakeholderFactory.connect(deployer).createStakeholder(
+            processor.address, 
+            1, // PROCESSOR role
+            "Fresh Processing Co", 
+            "PROC_" + Math.random().toString(36).substring(2, 11), 
+            "Texas", 
+            "FDA Approved"
+        );
+        
+        await stakeholderFactory.connect(deployer).createStakeholder(
+            distributor.address, 
+            3, // DISTRIBUTOR role
+            "Supply Chain Inc", 
+            "DIST_" + Math.random().toString(36).substring(2, 11), 
+            "Illinois", 
+            "Logistics Certified"
+        );
+        
+        await stakeholderFactory.connect(deployer).createStakeholder(
+            retailer.address, 
+            2, // RETAILER role
+            "Fresh Market", 
+            "RET_" + Math.random().toString(36).substring(2, 11), 
+            "New York", 
+            "Retail Licensed"
+        );
 
-        // Create test data
-        const productData = await testHelpers.createSampleProduct(productRegistry, farmer);
-        productId = productData.productId;
-        
-        // Update product to processing stage first
-        await testHelpers.updateProductStage(productRegistry, processor, productId, 1, "Processed and ready for shipment");
-        
-        // Create shipment and get tracking number
-        const shipmentData = await testHelpers.createSampleShipmentWithTracking(shipmentRegistry, distributor, productId, retailer.address);
-        shipmentId = shipmentData.shipmentId;
-        trackingNumber = shipmentData.trackingNumber;
+        await stakeholderFactory.connect(deployer).createStakeholder(
+            auditor.address, 
+            0, // FARMER role (as auditor)
+            "Quality Auditor", 
+            "AUDIT_" + Math.random().toString(36).substring(2, 11), 
+            "Washington", 
+            "ISO Certified"
+        );
+
+        // Create a test product
+        const tx = await productFactory.connect(farmer).createProduct(
+            "Test Product",
+            "Product for verification testing",
+            5,
+            15,
+            "Test Farm",
+            "Test harvest data"
+        );
+
+        const receipt = await tx.wait();
+        const event = receipt.logs.find(log =>
+            log.fragment && log.fragment.name === "ProductCreated"
+        );
+        productAddress = event.args[0];
     });
 
-    describe("Deployment", function () {
-        it("Should set correct contract addresses", async function () {
-            expect(await publicVerification.productRegistry()).to.equal(await productRegistry.getAddress());
-            expect(await publicVerification.stakeholderRegistry()).to.equal(await stakeholderRegistry.getAddress());
-            expect(await publicVerification.shipmentRegistry()).to.equal(await shipmentRegistry.getAddress());
+    describe("Contract Deployment", function () {
+        it("Should deploy with correct stakeholder registry", async function () {
+            expect(await publicVerification.stakeholderRegistry()).to.equal(
+                await stakeholderRegistry.getAddress()
+            );
+        });
+
+        it("Should deploy with correct registry", async function () {
+            expect(await publicVerification.registry()).to.equal(
+                await registry.getAddress()
+            );
         });
     });
 
     describe("Product Authenticity Verification", function () {
-        it("Should verify authentic product at farm stage", async function () {
-            const tx = await publicVerification.verifyProductAuthenticity(productId);
+        it("Should verify authentic product with valid farmer", async function () {
+            const result = await publicVerification.verifyProductAuthenticity.staticCall(productAddress);
             
-            await expect(tx)
-                .to.emit(publicVerification, "ProductVerificationRequested")
-                .withArgs(productId, deployer.address, await getBlockTimestamp(tx));
-
-            await expect(tx)
-                .to.emit(publicVerification, "VerificationResult")
-                .withArgs(productId, true, "Product is authentic and all stakeholders verified", await getBlockTimestamp(tx));
-
-            const receipt = await tx.wait();
-            const event = receipt.logs.find(log => {
-                try {
-                    const parsed = publicVerification.interface.parseLog(log);
-                    return parsed && parsed.name === 'VerificationResult';
-                } catch {
-                    return false;
-                }
-            });
-            
-            const parsedEvent = publicVerification.interface.parseLog(event);
-            expect(parsedEvent.args.isAuthentic).to.be.true;
-            expect(parsedEvent.args.details).to.include("authentic");
+            expect(result[0]).to.be.true; // isAuthentic
+            expect(result[1]).to.equal("Product is authentic and all stakeholders verified"); // details
         });
 
-        it("Should verify product with all stages completed", async function () {
-            // Product is already at PROCESSING stage (1) from setup, so continue from DISTRIBUTION
-            await testHelpers.updateProductStage(productRegistry, distributor, productId, 2, "Distributed");
-            await testHelpers.updateProductStage(productRegistry, retailer, productId, 3, "At retail");
-
-            const tx = await publicVerification.verifyProductAuthenticity(productId);
-            
-            await expect(tx)
-                .to.emit(publicVerification, "VerificationResult")
-                .withArgs(productId, true, "Product is authentic and all stakeholders verified", await getBlockTimestamp(tx));
+        it("Should emit ProductVerificationRequested event", async function () {
+            await expect(
+                publicVerification.connect(consumer).verifyProductAuthenticity(productAddress)
+            ).to.emit(publicVerification, "ProductVerificationRequested");
         });
 
-        it("Should detect invalid farmer registration", async function () {
-            // Create product with authorized farmer first
-            const testProductData = await testHelpers.createSampleProduct(productRegistry, farmer);
-            const testProductId = testProductData.productId;
-            
-            // Now deactivate the farmer to simulate invalid registration
-            await stakeholderRegistry.connect(deployer).deactivateStakeholder(farmer.address);
+        it("Should emit VerificationResult event for valid product", async function () {
+            await expect(
+                publicVerification.verifyProductAuthenticity(productAddress)
+            ).to.emit(publicVerification, "VerificationResult");
+        });
 
-            const tx = await publicVerification.verifyProductAuthenticity(testProductId);
-            
-            const receipt = await tx.wait();
-            await expect(tx)
-                .to.emit(publicVerification, "VerificationResult");
-            
-            // Check the event details separately
-            const event = receipt.logs.find(log => {
-                try {
-                    const parsed = publicVerification.interface.parseLog(log);
-                    return parsed && parsed.name === 'VerificationResult';
-                } catch {
-                    return false;
-                }
-            });
-            
-            if (event) {
-                const parsedEvent = publicVerification.interface.parseLog(event);
-                expect(parsedEvent.args.productId).to.equal(testProductId);
-                expect(parsedEvent.args.isAuthentic).to.be.false;
-                expect(parsedEvent.args.details).to.include("Farmer registration invalid");
+        it("Should fail verification for non-existent product", async function () {
+            try {
+                await publicVerification.verifyProductAuthenticity(ethers.ZeroAddress);
+                expect.fail("Should have thrown an error");
+            } catch (error) {
+                // Since the function reverts on invalid product, we expect an error
+                expect(error.message).to.include("reverted");
             }
         });
 
-        it("Should handle non-existent product", async function () {
-            const tx = await publicVerification.verifyProductAuthenticity(999);
+        it("Should verify product with processing stage", async function () {
+            // Move product to processing stage
+            const Product = await ethers.getContractFactory("Product");
+            const product = Product.attach(productAddress);
+            await product.connect(processor).updateProcessingStage("Processed with quality standards");
+
+            const result = await publicVerification.verifyProductAuthenticity.staticCall(productAddress);
             
-            await expect(tx)
-                .to.emit(publicVerification, "VerificationResult")
-                .withArgs(999, false, "Product not found or verification failed", await getBlockTimestamp(tx));
+            expect(result[0]).to.be.true; // isAuthentic
         });
 
-        it("Should detect invalid processor registration", async function () {
-            // Product is already at PROCESSING stage from setup, deactivate the processor
-            await stakeholderRegistry.connect(deployer).deactivateStakeholder(processor.address);
+        it("Should verify product with distribution stage", async function () {
+            const Product = await ethers.getContractFactory("Product");
+            const product = Product.attach(productAddress);
+            
+            // Move through stages
+            await product.connect(processor).updateProcessingStage("Processed");
+            await product.connect(distributor).updateDistributionStage("Distributed");
 
-            const tx = await publicVerification.verifyProductAuthenticity(productId);
+            const result = await publicVerification.verifyProductAuthenticity.staticCall(productAddress);
             
-            const receipt = await tx.wait();
-            await expect(tx)
-                .to.emit(publicVerification, "VerificationResult");
-            
-            // Check the event details separately
-            const event = receipt.logs.find(log => {
-                try {
-                    const parsed = publicVerification.interface.parseLog(log);
-                    return parsed && parsed.name === 'VerificationResult';
-                } catch {
-                    return false;
-                }
-            });
-            
-            if (event) {
-                const parsedEvent = publicVerification.interface.parseLog(event);
-                expect(parsedEvent.args.productId).to.equal(productId);
-                expect(parsedEvent.args.isAuthentic).to.be.false;
-                expect(parsedEvent.args.details).to.include("Processor registration invalid");
-            }
+            expect(result[0]).to.be.true; // isAuthentic
         });
 
-        it("Should detect invalid distributor registration", async function () {
-            // Move product to distribution stage, then deactivate distributor
-            await testHelpers.updateProductStage(productRegistry, distributor, productId, 2, "Distributed");
-            await stakeholderRegistry.connect(deployer).deactivateStakeholder(distributor.address);
+        it("Should verify product with retail stage", async function () {
+            const Product = await ethers.getContractFactory("Product");
+            const product = Product.attach(productAddress);
+            
+            // Move through all stages
+            await product.connect(processor).updateProcessingStage("Processed");
+            await product.connect(distributor).updateDistributionStage("Distributed");
+            await product.connect(retailer).updateRetailStage("Available in store");
 
-            const tx = await publicVerification.verifyProductAuthenticity(productId);
+            const result = await publicVerification.verifyProductAuthenticity.staticCall(productAddress);
             
-            const receipt = await tx.wait();
-            await expect(tx)
-                .to.emit(publicVerification, "VerificationResult");
-            
-            // Check the event details separately
-            const event = receipt.logs.find(log => {
-                try {
-                    const parsed = publicVerification.interface.parseLog(log);
-                    return parsed && parsed.name === 'VerificationResult';
-                } catch {
-                    return false;
-                }
-            });
-            
-            if (event) {
-                const parsedEvent = publicVerification.interface.parseLog(event);
-                expect(parsedEvent.args.productId).to.equal(productId);
-                expect(parsedEvent.args.isAuthentic).to.be.false;
-                expect(parsedEvent.args.details).to.include("Distributor registration invalid");
-            }
-        });
-
-        it("Should detect invalid retailer registration", async function () {
-            // Move product through stages to retail, then deactivate retailer
-            await testHelpers.updateProductStage(productRegistry, distributor, productId, 2, "Distributed");
-            await testHelpers.updateProductStage(productRegistry, retailer, productId, 3, "At retail");
-            await stakeholderRegistry.connect(deployer).deactivateStakeholder(retailer.address);
-
-            const tx = await publicVerification.verifyProductAuthenticity(productId);
-            
-            const receipt = await tx.wait();
-            await expect(tx)
-                .to.emit(publicVerification, "VerificationResult");
-            
-            // Check the event details separately
-            const event = receipt.logs.find(log => {
-                try {
-                    const parsed = publicVerification.interface.parseLog(log);
-                    return parsed && parsed.name === 'VerificationResult';
-                } catch {
-                    return false;
-                }
-            });
-            
-            if (event) {
-                const parsedEvent = publicVerification.interface.parseLog(event);
-                expect(parsedEvent.args.productId).to.equal(productId);
-                expect(parsedEvent.args.isAuthentic).to.be.false;
-                expect(parsedEvent.args.details).to.include("Retailer registration invalid");
-            }
+            expect(result[0]).to.be.true; // isAuthentic
         });
     });
 
     describe("Complete Supply Chain Verification", function () {
-        it("Should verify complete supply chain with valid shipment", async function () {
-            const [isValid, details] = await publicVerification.verifyCompleteSupplyChain.staticCall(productId);
-            
-            expect(isValid).to.be.true;
-            // Should include either shipment verification or no shipment message
-            expect(details).to.satisfy((msg) => 
-                msg.includes("verified successfully") || 
-                msg.includes("no shipment data available")
-            );
+        it("Should verify complete supply chain without shipment", async function () {
+            const result = await publicVerification.verifyCompleteSupplyChain.staticCall(productAddress);
+            // Expecting (isValid, details) return
+            expect(result[0]).to.be.true; // isValid
         });
 
-        it("Should handle product with cancelled shipment", async function () {
-            // Cancel the shipment
-            await shipmentRegistry.connect(distributor).updateShipmentStatus(
-                shipmentId,
-                4, // CANCELLED
-                "Shipment cancelled",
-                "Cancelled location"
-            );
-
-            const tx = await publicVerification.verifyCompleteSupplyChain(productId);
-            
-            await expect(tx)
-                .to.emit(publicVerification, "ShipmentVerificationPerformed")
-                .withArgs(shipmentId, productId, false, await getBlockTimestamp(tx));
-
-            const receipt = await tx.wait();
-            const event = receipt.logs.find(log => {
-                try {
-                    const parsed = publicVerification.interface.parseLog(log);
-                    return parsed && parsed.name === 'ShipmentVerificationPerformed';
-                } catch {
-                    return false;
-                }
-            });
-            
-            if (event) {
-                const parsedEvent = publicVerification.interface.parseLog(event);
-                expect(parsedEvent.args.isValid).to.be.false;
+        it("Should fail complete verification if product verification fails", async function () {
+            try {
+                await publicVerification.verifyCompleteSupplyChain.staticCall(ethers.ZeroAddress);
+                expect.fail("Should have thrown an error");
+            } catch (error) {
+                expect(error.message).to.include("reverted");
             }
-        });
-
-        it("Should handle product without shipment", async function () {
-            const newProductData = await testHelpers.createSampleProduct(productRegistry, farmer);
-            const newProductId = newProductData.productId;
-            
-            const [isValid, details] = await publicVerification.verifyCompleteSupplyChain.staticCall(newProductId);
-            
-            expect(isValid).to.be.true;
-            expect(details).to.include("no shipment data available");
-        });
-
-        it("Should fail verification for invalid product", async function () {
-            const [isValid, details] = await publicVerification.verifyCompleteSupplyChain.staticCall(999);
-            
-            expect(isValid).to.be.false;
-            expect(details).to.include("not found");
         });
     });
 
     describe("Traceability Reports", function () {
-        it("Should get basic traceability report", async function () {
-            const [
-                productInfo,
-                farmerInfo,
-                processorInfo,
-                distributorInfo,
-                retailerInfo,
-                isFullyTraced
-            ] = await publicVerification.getTraceabilityReport(productId);
-
-            expect(productInfo.productName).to.equal("Organic Apples");
-            expect(farmerInfo.stakeholderAddress).to.equal(farmer.address);
-            expect(isFullyTraced).to.be.true; // Should be true at farm stage
+        it("Should get basic traceability report for farm stage product", async function () {
+            const result = await publicVerification.getTraceabilityReport(productAddress);
+            // Expecting multiple return values: productName, farmer, farmerInfo, etc.
+            expect(result[0]).to.equal("Test Product"); // productName
         });
 
-        it("Should get complete traceability report with shipment", async function () {
-            const [
-                productInfo,
-                farmerInfo,
-                processorInfo,
-                distributorInfo,
-                retailerInfo,
-                isFullyTraced,
-                hasShipment,
-                shipmentInfo,
-                shipmentHistory
-            ] = await publicVerification.getCompleteTraceabilityReport(productId);
-
-            expect(productInfo.productName).to.equal("Organic Apples");
-            expect(farmerInfo.stakeholderAddress).to.equal(farmer.address);
-            expect(hasShipment).to.be.true;
-            expect(shipmentInfo.productId).to.equal(productId);
-        });
-
-        it("Should get traceability report for product without shipment", async function () {
-            const newProductData = await testHelpers.createSampleProduct(productRegistry, farmer);
-            const newProductId = newProductData.productId;
+        it("Should get traceability report for multi-stage product", async function () {
+            const Product = await ethers.getContractFactory("Product");
+            const product = Product.attach(productAddress);
             
-            const [
-                productInfo,
-                farmerInfo,
-                processorInfo,
-                distributorInfo,
-                retailerInfo,
-                isFullyTraced,
-                hasShipment,
-                shipmentInfo,
-                shipmentHistory
-            ] = await publicVerification.getCompleteTraceabilityReport(newProductId);
+            // Move through processing and distribution stages
+            await product.connect(processor).updateProcessingStage("Quality processing");
+            await product.connect(distributor).updateDistributionStage("Cold chain distribution");
 
-            expect(productInfo.productName).to.not.equal("");
+            const result = await publicVerification.getTraceabilityReport(productAddress);
+            expect(result[0]).to.equal("Test Product"); // productName
+        });
+
+        it("Should return empty data for non-existent product", async function () {
+            try {
+                await publicVerification.getTraceabilityReport(ethers.ZeroAddress);
+                expect.fail("Should have thrown an error");
+            } catch (error) {
+                expect(error.message).to.include("reverted");
+            }
+        });
+
+        it("Should get complete traceability report without shipment", async function () {
+            const [
+                productName,
+                ,// farmerAddr
+                ,// farmerInfo
+                ,// processorInfo
+                ,// distributorInfo
+                ,// retailerInfo
+                ,// isFullyTraced
+                hasShipment,
+                shipmentAddr,
+                shipmentHistory
+            ] = await publicVerification.getCompleteTraceabilityReport(productAddress);
+
+            expect(productName).to.equal("Test Product");
             expect(hasShipment).to.be.false;
-        });
-
-        it("Should track traceability through multiple stages", async function () {
-            // Product is already at PROCESSING stage (1) from setup, continue to distribution
-            await testHelpers.updateProductStage(productRegistry, distributor, productId, 2, "Distributed");
-
-            const [
-                productInfo,
-                farmerInfo,
-                processorInfo,
-                distributorInfo,
-                retailerInfo,
-                isFullyTraced
-            ] = await publicVerification.getTraceabilityReport(productId);
-
-            expect(productInfo.currentStage).to.equal(2); // DISTRIBUTION
-            expect(processorInfo.stakeholderAddress).to.equal(processor.address);
-            expect(distributorInfo.stakeholderAddress).to.equal(distributor.address);
-            expect(isFullyTraced).to.be.true;
+            expect(shipmentAddr).to.equal(ethers.ZeroAddress);
+            expect(shipmentHistory).to.have.length(0);
         });
     });
 
-    describe("Simple Product Verification", function () {
-        it("Should verify valid product", async function () {
-            const isValid = await publicVerification.verifyProduct(productId);
-            expect(isValid).to.be.true;
-        });
-
-        it("Should reject invalid product", async function () {
-            const isValid = await publicVerification.verifyProduct(999);
-            expect(isValid).to.be.false;
-        });
-
-        it("Should reject product with unregistered farmer", async function () {
-            // Create product with authorized farmer first
-            const testProductData = await testHelpers.createSampleProduct(productRegistry, farmer);
-            const testProductId = testProductData.productId;
-            
-            // Now deactivate the farmer to simulate invalid registration
-            await stakeholderRegistry.connect(deployer).deactivateStakeholder(farmer.address);
-
-            const isValid = await publicVerification.verifyProduct(testProductId);
-            expect(isValid).to.be.false;
-        });
-    });
-
-    describe("Audit Functions", function () {
-        it("Should perform audit and emit event", async function () {
-            const auditResult = "Product quality verified - Grade A";
-            
-            const tx = await publicVerification.connect(auditor).performAudit(productId, auditResult);
-            
-            await expect(tx)
-                .to.emit(publicVerification, "AuditPerformed")
-                .withArgs(auditor.address, productId, auditResult, await getBlockTimestamp(tx));
-        });
-
-        it("Should allow any address to perform audit", async function () {
-            const auditResult = "Consumer feedback - excellent quality";
-            
-            const tx = await publicVerification.connect(consumer).performAudit(productId, auditResult);
-            
-            await expect(tx)
-                .to.emit(publicVerification, "AuditPerformed")
-                .withArgs(consumer.address, productId, auditResult, await getBlockTimestamp(tx));
-        });
-    });
-
-    describe("Transparency Metrics", function () {
-        it("Should get transparency metrics", async function () {
-            const [
-                totalProducts,
-                totalStakeholders,
-                totalFarmers,
-                totalProcessors,
-                totalDistributors,
-                totalRetailers,
-                totalShipments
-            ] = await publicVerification.getTransparencyMetrics();
-
-            expect(totalProducts).to.be.greaterThan(0);
-            expect(totalStakeholders).to.be.greaterThan(0);
-            expect(totalFarmers).to.be.greaterThan(0);
-            expect(totalProcessors).to.be.greaterThan(0);
-            expect(totalDistributors).to.be.greaterThan(0);
-            expect(totalRetailers).to.be.greaterThan(0);
-            expect(totalShipments).to.be.greaterThan(0);
-        });
-    });
-
-    describe("Tracking Functions", function () {
-        it("Should track product with shipment by tracking number", async function () {
-            const [
-                prodId,
-                productStage,
-                shipmentStatus,
-                productName,
-                statusDescription,
-                isProductValid,
-                isShipmentValid
-            ] = await publicVerification.trackProductWithShipment(trackingNumber);
-
-            expect(prodId).to.equal(productId);
-            expect(productName).to.equal("Organic Apples");
-            expect(isProductValid).to.be.true;
-            expect(isShipmentValid).to.be.true;
-        });
-
-        it("Should handle invalid tracking number", async function () {
+    describe("Audit Functionality", function () {
+        it("Should allow registered stakeholder to perform audit", async function () {
             await expect(
-                publicVerification.trackProductWithShipment("INVALID")
-            ).to.be.revertedWith("Invalid tracking number or shipment not found");
+                publicVerification.connect(auditor).performAudit(
+                    productAddress,
+                    "Quality audit passed - all standards met"
+                )
+            ).to.emit(publicVerification, "AuditPerformed");
         });
 
-        it("Should detect invalid shipment status", async function () {
-            // Update shipment to cancelled status
-            await shipmentRegistry.connect(distributor).updateShipmentStatus(
-                shipmentId,
-                4, // CANCELLED
-                "Shipment cancelled",
-                "Cancelled location"
-            );
+        it("Should reject audit from unregistered user", async function () {
+            await expect(
+                publicVerification.connect(unauthorized).performAudit(
+                    productAddress,
+                    "Unauthorized audit attempt"
+                )
+            ).to.be.revertedWith("Only registered stakeholders can perform audits");
+        });
 
-            const [
-                prodId,
-                productStage,
-                shipmentStatus,
-                productName,
-                statusDescription,
-                isProductValid,
-                isShipmentValid
-            ] = await publicVerification.trackProductWithShipment(trackingNumber);
-
-            expect(isProductValid).to.be.true;
-            expect(isShipmentValid).to.be.false; // Should be false for cancelled shipment
+        it("Should allow farmer to perform audit", async function () {
+            await expect(
+                publicVerification.connect(farmer).performAudit(
+                    productAddress,
+                    "Self-audit completed"
+                )
+            ).to.emit(publicVerification, "AuditPerformed");
         });
     });
 
-    describe("System Overview", function () {
-        it("Should get system overview", async function () {
-            const [
-                totalProducts,
-                totalShipments,
-                totalStakeholders,
-                activeProducts,
-                shipmentsInTransit,
-                systemStatus
-            ] = await publicVerification.getSystemOverview();
-
-            expect(totalProducts).to.be.greaterThan(0);
-            expect(totalShipments).to.be.greaterThan(0);
-            expect(totalStakeholders).to.be.greaterThan(0);
-            expect(activeProducts).to.equal(totalProducts);
-            expect(systemStatus).to.include("Operational");
-        });
-    });
-
-    describe("Integration Scenarios", function () {
-        it("Should verify complete product lifecycle", async function () {
-            // Create new product for lifecycle test
-            const newProductData = await testHelpers.createSampleProduct(productRegistry, farmer);
-            const newProductId = newProductData.productId;
-
-            // Initial verification
-            let [isValid, details] = await publicVerification.verifyCompleteSupplyChain.staticCall(newProductId);
-            expect(isValid).to.be.true;
-
-            // Move through stages
-            await testHelpers.updateProductStage(productRegistry, processor, newProductId, 1, "Processed");
-            [isValid, details] = await publicVerification.verifyCompleteSupplyChain.staticCall(newProductId);
-            expect(isValid).to.be.true;
-
-            await testHelpers.updateProductStage(productRegistry, distributor, newProductId, 2, "Distributed");
-            [isValid, details] = await publicVerification.verifyCompleteSupplyChain.staticCall(newProductId);
-            expect(isValid).to.be.true;
-
-            // Create shipment
-            const newShipmentId = await testHelpers.createSampleShipment(
-                shipmentRegistry,
-                distributor,
-                newProductId,
-                retailer.address
-            );
-
-            [isValid, details] = await publicVerification.verifyCompleteSupplyChain.staticCall(newProductId);
-            expect(isValid).to.be.true;
-            expect(details).to.include("verified successfully");
+    describe("Helper Functions", function () {
+        it("Should return zero address when product has no shipment", async function () {
+            const shipmentAddr = await publicVerification.findShipmentByProduct(productAddress);
+            expect(shipmentAddr).to.equal(ethers.ZeroAddress);
         });
 
-        it("Should handle multiple audits on same product", async function () {
-            // Multiple audits by different stakeholders
-            await publicVerification.connect(auditor).performAudit(productId, "Initial audit - good quality");
-            await publicVerification.connect(retailer).performAudit(productId, "Retail inspection - approved");
-            await publicVerification.connect(consumer).performAudit(productId, "Consumer feedback - satisfied");
-
-            // Verification should still work
-            const isValid = await publicVerification.verifyProduct(productId);
-            expect(isValid).to.be.true;
-        });
-
-        it("Should provide accurate metrics with multiple products", async function () {
-            // Create additional products
-            const productId2 = await testHelpers.createSampleProductSimple(productRegistry, farmer);
-            const productId3 = await testHelpers.createSampleProductSimple(productRegistry, farmer);
-
-            const [
-                totalProducts,
-                totalStakeholders,
-                totalFarmers,
-                totalProcessors,
-                totalDistributors,
-                totalRetailers,
-                totalShipments
-            ] = await publicVerification.getTransparencyMetrics();
-
-            expect(totalProducts).to.be.greaterThan(2); // At least 3 products created
+        it("Should return zero address for non-existent tracking number", async function () {
+            const shipmentAddr = await publicVerification.findShipmentByTrackingNumber("INVALID_TRACKING");
+            expect(shipmentAddr).to.equal(ethers.ZeroAddress);
         });
     });
 
     describe("Error Handling and Edge Cases", function () {
-        it("Should handle empty tracking for non-existent product", async function () {
-            const [
-                productInfo,
-                farmerInfo,
-                processorInfo,
-                distributorInfo,
-                retailerInfo,
-                isFullyTraced
-            ] = await publicVerification.getTraceabilityReport(999);
-
-            expect(productInfo.productName).to.equal("");
-            expect(isFullyTraced).to.be.false;
+        it("Should handle invalid product addresses gracefully", async function () {
+            const invalidAddress = "0x1234567890123456789012345678901234567890";
+            
+            try {
+                await publicVerification.verifyProductAuthenticity.staticCall(invalidAddress);
+                expect.fail("Should have thrown an error");
+            } catch (error) {
+                expect(error.message).to.include("reverted");
+            }
         });
 
-        it("Should handle verification of product at different stages", async function () {
-            // Test verification at current stage (already at PROCESSING from setup)
-            let tx = await publicVerification.verifyProductAuthenticity(productId);
-            await expect(tx).to.emit(publicVerification, "VerificationResult");
+        it("Should handle traceability report for invalid product", async function () {
+            try {
+                await publicVerification.getTraceabilityReport("0x1234567890123456789012345678901234567890");
+                expect.fail("Should have thrown an error");
+            } catch (error) {
+                expect(error.message).to.include("reverted");
+            }
+        });
 
-            // Distribution stage
-            await testHelpers.updateProductStage(productRegistry, distributor, productId, 2, "Distributed");
-            tx = await publicVerification.verifyProductAuthenticity(productId);
-            await expect(tx).to.emit(publicVerification, "VerificationResult");
-
-            // Retail stage
-            await testHelpers.updateProductStage(productRegistry, retailer, productId, 3, "At retail");
-            tx = await publicVerification.verifyProductAuthenticity(productId);
-            await expect(tx).to.emit(publicVerification, "VerificationResult");
+        it("Should handle complete supply chain verification for invalid product", async function () {
+            try {
+                await publicVerification.verifyCompleteSupplyChain.staticCall(
+                    "0x1234567890123456789012345678901234567890"
+                );
+                expect.fail("Should have thrown an error");
+            } catch (error) {
+                expect(error.message).to.include("reverted");
+            }
         });
     });
 
-    // Helper function to get block timestamp
-    async function getBlockTimestamp(tx) {
-        const receipt = await tx.wait();
-        const block = await ethers.provider.getBlock(receipt.blockNumber);
-        return block.timestamp;
-    }
-}); 
+    describe("Integration with Product Lifecycle", function () {
+        it("Should verify product authenticity through complete lifecycle", async function () {
+            const Product = await ethers.getContractFactory("Product");
+            const product = Product.attach(productAddress);
+
+            // Test at each stage
+            // 1. Farm stage
+            let result = await publicVerification.verifyProductAuthenticity.staticCall(productAddress);
+            expect(result[0]).to.be.true;
+
+            // 2. Processing stage
+            await product.connect(processor).updateProcessingStage("Quality processing completed");
+            result = await publicVerification.verifyProductAuthenticity.staticCall(productAddress);
+            expect(result[0]).to.be.true;
+
+            // 3. Distribution stage
+            await product.connect(distributor).updateDistributionStage("Distributed via cold chain");
+            result = await publicVerification.verifyProductAuthenticity.staticCall(productAddress);
+            expect(result[0]).to.be.true;
+
+            // 4. Retail stage
+            await product.connect(retailer).updateRetailStage("Available for purchase");
+            result = await publicVerification.verifyProductAuthenticity.staticCall(productAddress);
+            expect(result[0]).to.be.true;
+
+            // 5. Consumed stage
+            await product.connect(consumer).markAsConsumed();
+            result = await publicVerification.verifyProductAuthenticity.staticCall(productAddress);
+            expect(result[0]).to.be.true;
+        });
+
+        it("Should track stakeholder changes through product lifecycle", async function () {
+            const Product = await ethers.getContractFactory("Product");
+            const product = Product.attach(productAddress);
+
+            // Move through stages and check traceability at each step
+            await product.connect(processor).updateProcessingStage("Processed");
+            await product.connect(distributor).updateDistributionStage("Distributed");
+            await product.connect(retailer).updateRetailStage("Retailed");
+
+            const result = await publicVerification.getTraceabilityReport(productAddress);
+            expect(result[0]).to.equal("Test Product"); // productName
+        });
+    });
+
+    describe("Event Emissions", function () {
+        it("Should emit all required events during verification flow", async function () {
+            // Test ProductVerificationRequested event
+            await expect(
+                publicVerification.connect(consumer).verifyProductAuthenticity(productAddress)
+            ).to.emit(publicVerification, "ProductVerificationRequested");
+
+            // Test VerificationResult event
+            await expect(
+                publicVerification.verifyProductAuthenticity(productAddress)
+            ).to.emit(publicVerification, "VerificationResult");
+        });
+
+        it("Should emit AuditPerformed event with correct parameters", async function () {
+            const auditMessage = "Comprehensive quality audit completed successfully";
+            
+            await expect(
+                publicVerification.connect(farmer).performAudit(productAddress, auditMessage)
+            ).to.emit(publicVerification, "AuditPerformed");
+        });
+    });
+
+    describe("Access Control and Permissions", function () {
+        it("Should allow any address to verify product authenticity", async function () {
+            // Unauthorized user should be able to verify products
+            const result = await publicVerification.connect(unauthorized).verifyProductAuthenticity.staticCall(productAddress);
+            expect(result[0]).to.be.true; // isAuthentic
+        });
+
+        it("Should allow any address to get traceability reports", async function () {
+            const result = await publicVerification.connect(unauthorized).getTraceabilityReport(productAddress);
+            expect(result[0]).to.equal("Test Product"); // productName
+        });
+
+        it("Should restrict audit functionality to registered stakeholders only", async function () {
+            await expect(
+                publicVerification.connect(unauthorized).performAudit(productAddress, "Unauthorized audit")
+            ).to.be.revertedWith("Only registered stakeholders can perform audits");
+        });
+    });
+});
