@@ -3,1022 +3,684 @@ pragma solidity ^0.8.0;
 
 import "forge-std/Test.sol";
 import "../src/SmartContracts/StakeholderRegistry.sol";
+import "../src/SmartContracts/Registry.sol";
+import "../src/SmartContracts/StakeholderFactory.sol";
+import "../src/SmartContracts/Stakeholder.sol";
 
 contract StakeholderRegistryFuzz is Test {
-    StakeholderRegistry stakeholderRegistry;
+    StakeholderRegistry public stakeholderRegistry;
+    Registry public registry;
+    StakeholderFactory public stakeholderFactory;
     
     address admin = address(0x1);
-    address farmer = address(0x2);
-    address processor = address(0x3);
-    address distributor = address(0x4);
-    address retailer = address(0x5);
-    address nonAdmin = address(0x6);
+    address farmer1 = address(0x2);
+    address farmer2 = address(0x3);
+    address distributor1 = address(0x4);
+    address distributor2 = address(0x5);
+    address processor1 = address(0x6);
+    address retailer1 = address(0x7);
+    address unauthorized = address(0x8);
+    
+    event StakeholderLookupPerformed(
+        address indexed stakeholderContract,
+        address indexed requester,
+        uint256 timestamp
+    );
 
     function setUp() public {
+        vm.startPrank(admin);
+        
+        // Deploy core contracts
+        registry = new Registry();
+        stakeholderRegistry = new StakeholderRegistry(address(registry));
+        stakeholderFactory = new StakeholderFactory(address(registry));
+        
+        vm.stopPrank();
+    }
+
+    // ===== HELPER FUNCTIONS =====
+
+    /**
+     * @dev Sanitizes string inputs to handle invalid UTF-8 and length issues
+     */
+    function _sanitizeString(string memory input, string memory defaultValue) internal pure returns (string memory) {
+        bytes memory inputBytes = bytes(input);
+        
+        // Check if string is empty or too long
+        if (inputBytes.length == 0 || inputBytes.length > 50) {
+            return defaultValue;
+        }
+        
+        // Only allow printable ASCII characters (0x20-0x7E)
+        for (uint256 i = 0; i < inputBytes.length; i++) {
+            bytes1 b = inputBytes[i];
+            if (uint8(b) < 0x20 || uint8(b) > 0x7E) {
+                return defaultValue;
+            }
+        }
+        
+        return input;
+    }
+
+    function _createStakeholder(
+        address stakeholderAddr,
+        Stakeholder.StakeholderRole role,
+        string memory name,
+        string memory license
+    ) internal returns (address) {
         vm.prank(admin);
-        stakeholderRegistry = new StakeholderRegistry();
+        return stakeholderFactory.createStakeholder(
+            stakeholderAddr,
+            role,
+            name,
+            license,
+            "Location",
+            "Certifications"
+        );
+    }
+
+    function _getRandomRole(uint256 seed) internal pure returns (Stakeholder.StakeholderRole) {
+        uint8 roleIndex = uint8(seed % 4);
+        if (roleIndex == 0) return Stakeholder.StakeholderRole.FARMER;
+        if (roleIndex == 1) return Stakeholder.StakeholderRole.DISTRIBUTOR;
+        if (roleIndex == 2) return Stakeholder.StakeholderRole.PROCESSOR;
+        return Stakeholder.StakeholderRole.RETAILER;
+    }
+
+    function _getDifferentRole(Stakeholder.StakeholderRole currentRole) internal pure returns (Stakeholder.StakeholderRole) {
+        if (currentRole == Stakeholder.StakeholderRole.FARMER) return Stakeholder.StakeholderRole.DISTRIBUTOR;
+        if (currentRole == Stakeholder.StakeholderRole.DISTRIBUTOR) return Stakeholder.StakeholderRole.PROCESSOR;
+        if (currentRole == Stakeholder.StakeholderRole.PROCESSOR) return Stakeholder.StakeholderRole.RETAILER;
+        return Stakeholder.StakeholderRole.FARMER;
     }
 
     // ===== CONSTRUCTOR TESTS =====
 
     /**
-     * @dev Test constructor sets admin correctly
+     * @dev Test StakeholderRegistry constructor with valid registry
      */
-    function testConstructorSetsAdmin() public {
-        assertEq(stakeholderRegistry.admin(), admin);
-        assertEq(stakeholderRegistry.totalStakeholders(), 0);
-    }
-
-    // ===== STAKEHOLDER REGISTRATION TESTS =====
-
-    /**
-     * @dev Test successful stakeholder registration
-     */
-    function testFuzzRegisterStakeholder(
-        string memory businessName,
-        string memory businessLicense,
-        string memory location,
-        string memory certifications
-    ) public {
-        vm.assume(bytes(businessName).length > 0);
-        vm.assume(bytes(businessLicense).length > 0);
-        vm.assume(bytes(location).length > 0);
-        vm.assume(bytes(certifications).length > 0);
-
-        vm.prank(admin);
-        vm.expectEmit(true, true, false, true);
-        emit StakeholderRegistered(farmer, StakeholderRegistry.StakeholderRole.FARMER, businessName, block.timestamp);
+    function testFuzzConstructor(address registryAddr) public {
+        vm.assume(registryAddr != address(0));
         
-        stakeholderRegistry.registerStakeholder(
-            farmer,
-            StakeholderRegistry.StakeholderRole.FARMER,
-            businessName,
-            businessLicense,
-            location,
-            certifications
-        );
-
-        // Verify registration
-        StakeholderRegistry.StakeholderInfo memory info = stakeholderRegistry.getStakeholderInfo(farmer);
-        assertEq(info.stakeholderAddress, farmer);
-        assertEq(uint(info.role), uint(StakeholderRegistry.StakeholderRole.FARMER));
-        assertEq(info.businessName, businessName);
-        assertEq(info.businessLicense, businessLicense);
-        assertEq(info.location, location);
-        assertEq(info.certifications, certifications);
-        assertTrue(info.isActive);
-        assertTrue(info.registeredAt > 0);
-        assertTrue(info.lastActivity > 0);
-
-        // Verify license mapping
-        assertEq(stakeholderRegistry.licenseToAddress(businessLicense), farmer);
-
-        // Verify role mapping
-        address[] memory farmers = stakeholderRegistry.getStakeholdersByRole(StakeholderRegistry.StakeholderRole.FARMER);
-        assertEq(farmers.length, 1);
-        assertEq(farmers[0], farmer);
-
-        // Verify total count
-        assertEq(stakeholderRegistry.totalStakeholders(), 1);
-    }
-
-    /**
-     * @dev Test registration of all stakeholder roles
-     */
-    function testFuzzRegisterAllRoles(
-        string memory businessName1,
-        string memory businessName2,
-        string memory businessName3,
-        string memory businessName4,
-        string memory license1,
-        string memory license2,
-        string memory license3,
-        string memory license4
-    ) public {
-        vm.assume(bytes(businessName1).length > 0 && bytes(businessName2).length > 0);
-        vm.assume(bytes(businessName3).length > 0 && bytes(businessName4).length > 0);
-        vm.assume(bytes(license1).length > 0 && bytes(license2).length > 0);
-        vm.assume(bytes(license3).length > 0 && bytes(license4).length > 0);
-        vm.assume(keccak256(bytes(license1)) != keccak256(bytes(license2)));
-        vm.assume(keccak256(bytes(license1)) != keccak256(bytes(license3)));
-        vm.assume(keccak256(bytes(license1)) != keccak256(bytes(license4)));
-        vm.assume(keccak256(bytes(license2)) != keccak256(bytes(license3)));
-        vm.assume(keccak256(bytes(license2)) != keccak256(bytes(license4)));
-        vm.assume(keccak256(bytes(license3)) != keccak256(bytes(license4)));
-
-        vm.startPrank(admin);
-
-        // Register farmer
-        stakeholderRegistry.registerStakeholder(
-            farmer,
-            StakeholderRegistry.StakeholderRole.FARMER,
-            businessName1,
-            license1,
-            "Farm Location",
-            "Organic Cert"
-        );
-
-        // Register processor
-        stakeholderRegistry.registerStakeholder(
-            processor,
-            StakeholderRegistry.StakeholderRole.PROCESSOR,
-            businessName2,
-            license2,
-            "Processing Facility",
-            "Food Safety Cert"
-        );
-
-        // Register distributor
-        stakeholderRegistry.registerStakeholder(
-            distributor,
-            StakeholderRegistry.StakeholderRole.DISTRIBUTOR,
-            businessName3,
-            license3,
-            "Distribution Center",
-            "Transport Cert"
-        );
-
-        // Register retailer
-        stakeholderRegistry.registerStakeholder(
-            retailer,
-            StakeholderRegistry.StakeholderRole.RETAILER,
-            businessName4,
-            license4,
-            "Retail Store",
-            "Retail License"
-        );
-
-        vm.stopPrank();
-
-        // Verify all registrations
-        assertTrue(stakeholderRegistry.isRegisteredStakeholder(farmer, StakeholderRegistry.StakeholderRole.FARMER));
-        assertTrue(stakeholderRegistry.isRegisteredStakeholder(processor, StakeholderRegistry.StakeholderRole.PROCESSOR));
-        assertTrue(stakeholderRegistry.isRegisteredStakeholder(distributor, StakeholderRegistry.StakeholderRole.DISTRIBUTOR));
-        assertTrue(stakeholderRegistry.isRegisteredStakeholder(retailer, StakeholderRegistry.StakeholderRole.RETAILER));
-
-        // Verify role arrays
-        assertEq(stakeholderRegistry.getStakeholdersByRole(StakeholderRegistry.StakeholderRole.FARMER).length, 1);
-        assertEq(stakeholderRegistry.getStakeholdersByRole(StakeholderRegistry.StakeholderRole.PROCESSOR).length, 1);
-        assertEq(stakeholderRegistry.getStakeholdersByRole(StakeholderRegistry.StakeholderRole.DISTRIBUTOR).length, 1);
-        assertEq(stakeholderRegistry.getStakeholdersByRole(StakeholderRegistry.StakeholderRole.RETAILER).length, 1);
-
-        // Verify total count
-        assertEq(stakeholderRegistry.totalStakeholders(), 4);
-    }
-
-    /**
-     * @dev Test registration access control - only admin can register
-     */
-    function testFuzzRegisterStakeholderAccessControl(
-        address caller,
-        string memory businessName,
-        string memory businessLicense
-    ) public {
-        vm.assume(caller != admin);
-        vm.assume(bytes(businessName).length > 0);
-        vm.assume(bytes(businessLicense).length > 0);
-
-        vm.expectRevert("Only admin can call this function");
-        vm.prank(caller);
-        stakeholderRegistry.registerStakeholder(
-            farmer,
-            StakeholderRegistry.StakeholderRole.FARMER,
-            businessName,
-            businessLicense,
-            "Location",
-            "Certs"
-        );
-    }
-
-    /**
-     * @dev Test registration with zero address fails
-     */
-    function testFuzzRegisterStakeholderZeroAddress(
-        string memory businessName,
-        string memory businessLicense
-    ) public {
-        vm.assume(bytes(businessName).length > 0);
-        vm.assume(bytes(businessLicense).length > 0);
-
-        vm.expectRevert("Invalid stakeholder address");
         vm.prank(admin);
-        stakeholderRegistry.registerStakeholder(
-            address(0),
-            StakeholderRegistry.StakeholderRole.FARMER,
-            businessName,
-            businessLicense,
-            "Location",
-            "Certs"
-        );
+        StakeholderRegistry newRegistry = new StakeholderRegistry(registryAddr);
+        
+        assertEq(address(newRegistry.registry()), registryAddr);
+        assertEq(newRegistry.admin(), admin);
     }
 
     /**
-     * @dev Test registration of already registered stakeholder fails
+     * @dev Test constructor with zero address
      */
-    function testFuzzRegisterStakeholderAlreadyRegistered(
-        string memory businessName,
-        string memory businessLicense1,
-        string memory businessLicense2
+    function testConstructorZeroAddress() public {
+        vm.prank(admin);
+        StakeholderRegistry newRegistry = new StakeholderRegistry(address(0));
+        
+        // Constructor doesn't validate, but usage would fail
+        assertEq(address(newRegistry.registry()), address(0));
+    }
+
+    // ===== STAKEHOLDER REGISTRATION CHECKS =====
+
+    /**
+     * @dev Test isRegisteredStakeholder with registered stakeholder and correct role
+     */
+    function testFuzzIsRegisteredStakeholderCorrectRole(
+        address stakeholderAddr,
+        uint256 roleSeed,
+        string memory name,
+        string memory license
     ) public {
-        vm.assume(bytes(businessName).length > 0);
-        vm.assume(bytes(businessLicense1).length > 0);
-        vm.assume(bytes(businessLicense2).length > 0);
-        vm.assume(keccak256(bytes(businessLicense1)) != keccak256(bytes(businessLicense2)));
-
-        vm.startPrank(admin);
-
-        // First registration should succeed
-        stakeholderRegistry.registerStakeholder(
-            farmer,
-            StakeholderRegistry.StakeholderRole.FARMER,
-            businessName,
-            businessLicense1,
-            "Location",
-            "Certs"
-        );
-
-        // Second registration with same address should fail
-        vm.expectRevert("Stakeholder already registered");
-        stakeholderRegistry.registerStakeholder(
-            farmer,
-            StakeholderRegistry.StakeholderRole.PROCESSOR,
-            businessName,
-            businessLicense2,
-            "Location",
-            "Certs"
-        );
-
-        vm.stopPrank();
+        vm.assume(stakeholderAddr != address(0));
+        name = _sanitizeString(name, "TestStakeholder");
+        license = _sanitizeString(license, string(abi.encodePacked("LIC", vm.toString(uint160(stakeholderAddr)))));
+        
+        Stakeholder.StakeholderRole role = _getRandomRole(roleSeed);
+        
+        // Create stakeholder
+        _createStakeholder(stakeholderAddr, role, name, license);
+        
+        // Check if registered with correct role
+        assertTrue(stakeholderRegistry.isRegisteredStakeholder(stakeholderAddr, role));
     }
 
     /**
-     * @dev Test registration with duplicate business license fails
+     * @dev Test isRegisteredStakeholder with registered stakeholder but wrong role
      */
-    function testFuzzRegisterStakeholderDuplicateLicense(
-        string memory businessName,
-        string memory businessLicense
+    function testFuzzIsRegisteredStakeholderWrongRole(
+        address stakeholderAddr,
+        uint256 roleSeed,
+        string memory name,
+        string memory license
     ) public {
-        vm.assume(bytes(businessName).length > 0);
-        vm.assume(bytes(businessLicense).length > 0);
-
-        vm.startPrank(admin);
-
-        // First registration should succeed
-        stakeholderRegistry.registerStakeholder(
-            farmer,
-            StakeholderRegistry.StakeholderRole.FARMER,
-            businessName,
-            businessLicense,
-            "Location",
-            "Certs"
-        );
-
-        // Second registration with same license should fail
-        vm.expectRevert("Business license already registered");
-        stakeholderRegistry.registerStakeholder(
-            processor,
-            StakeholderRegistry.StakeholderRole.PROCESSOR,
-            businessName,
-            businessLicense,
-            "Location",
-            "Certs"
-        );
-
-        vm.stopPrank();
+        vm.assume(stakeholderAddr != address(0));
+        name = _sanitizeString(name, "TestStakeholder");
+        license = _sanitizeString(license, string(abi.encodePacked("LIC", vm.toString(uint160(stakeholderAddr)))));
+        
+        Stakeholder.StakeholderRole actualRole = _getRandomRole(roleSeed);
+        Stakeholder.StakeholderRole wrongRole = _getDifferentRole(actualRole);
+        
+        // Create stakeholder
+        _createStakeholder(stakeholderAddr, actualRole, name, license);
+        
+        // Check if registered with wrong role (should return false)
+        assertFalse(stakeholderRegistry.isRegisteredStakeholder(stakeholderAddr, wrongRole));
     }
 
     /**
-     * @dev Test multiple stakeholders with same role
+     * @dev Test isRegisteredStakeholder with unregistered address
      */
-    function testFuzzMultipleStakeholdersSameRole(
-        string memory businessName1,
-        string memory businessName2,
-        string memory license1,
-        string memory license2
+    function testFuzzIsRegisteredStakeholderUnregistered(
+        address unregisteredAddr,
+        uint256 roleSeed
     ) public {
-        vm.assume(bytes(businessName1).length > 0 && bytes(businessName2).length > 0);
-        vm.assume(bytes(license1).length > 0 && bytes(license2).length > 0);
-        vm.assume(keccak256(bytes(license1)) != keccak256(bytes(license2)));
+        vm.assume(unregisteredAddr != address(0));
+        // Ensure address is not one of our pre-registered addresses
+        vm.assume(unregisteredAddr != admin);
+        vm.assume(unregisteredAddr != farmer1);
+        vm.assume(unregisteredAddr != distributor1);
+        
+        Stakeholder.StakeholderRole role = _getRandomRole(roleSeed);
+        
+        // Check unregistered address (should return false)
+        assertFalse(stakeholderRegistry.isRegisteredStakeholder(unregisteredAddr, role));
+    }
 
-        address farmer1 = farmer;
-        address farmer2 = address(0x10);
+    /**
+     * @dev Test isRegisteredStakeholder with zero address
+     */
+    function testIsRegisteredStakeholderZeroAddress() public {
+        assertFalse(stakeholderRegistry.isRegisteredStakeholder(address(0), Stakeholder.StakeholderRole.FARMER));
+        assertFalse(stakeholderRegistry.isRegisteredStakeholder(address(0), Stakeholder.StakeholderRole.DISTRIBUTOR));
+        assertFalse(stakeholderRegistry.isRegisteredStakeholder(address(0), Stakeholder.StakeholderRole.PROCESSOR));
+        assertFalse(stakeholderRegistry.isRegisteredStakeholder(address(0), Stakeholder.StakeholderRole.RETAILER));
+    }
 
-        vm.startPrank(admin);
+    // ===== ACTIVE STAKEHOLDER CHECKS =====
 
-        // Register first farmer
-        stakeholderRegistry.registerStakeholder(
-            farmer1,
-            StakeholderRegistry.StakeholderRole.FARMER,
-            businessName1,
-            license1,
-            "Location 1",
-            "Certs 1"
-        );
+    /**
+     * @dev Test isActiveStakeholder with registered and active stakeholder
+     */
+    function testFuzzIsActiveStakeholderRegistered(
+        address stakeholderAddr,
+        uint256 roleSeed,
+        string memory name,
+        string memory license
+    ) public {
+        vm.assume(stakeholderAddr != address(0));
+        name = _sanitizeString(name, "TestStakeholder");
+        license = _sanitizeString(license, string(abi.encodePacked("LIC", vm.toString(uint160(stakeholderAddr)))));
+        
+        Stakeholder.StakeholderRole role = _getRandomRole(roleSeed);
+        
+        // Create stakeholder (should be active by default)
+        _createStakeholder(stakeholderAddr, role, name, license);
+        
+        // Check if active
+        assertTrue(stakeholderRegistry.isActiveStakeholder(stakeholderAddr));
+    }
 
-        // Register second farmer
-        stakeholderRegistry.registerStakeholder(
-            farmer2,
-            StakeholderRegistry.StakeholderRole.FARMER,
-            businessName2,
-            license2,
-            "Location 2",
-            "Certs 2"
-        );
+    /**
+     * @dev Test isActiveStakeholder with unregistered address
+     */
+    function testFuzzIsActiveStakeholderUnregistered(address unregisteredAddr) public {
+        vm.assume(unregisteredAddr != address(0));
+        // Ensure address is not one of our pre-registered addresses
+        vm.assume(unregisteredAddr != admin);
+        vm.assume(unregisteredAddr != farmer1);
+        vm.assume(unregisteredAddr != distributor1);
+        
+        // Check unregistered address (should return false)
+        assertFalse(stakeholderRegistry.isActiveStakeholder(unregisteredAddr));
+    }
 
-        vm.stopPrank();
+    /**
+     * @dev Test isActiveStakeholder with zero address
+     */
+    function testIsActiveStakeholderZeroAddress() public {
+        assertFalse(stakeholderRegistry.isActiveStakeholder(address(0)));
+    }
 
-        // Verify both are registered
-        assertTrue(stakeholderRegistry.isRegisteredStakeholder(farmer1, StakeholderRegistry.StakeholderRole.FARMER));
-        assertTrue(stakeholderRegistry.isRegisteredStakeholder(farmer2, StakeholderRegistry.StakeholderRole.FARMER));
+    // ===== STAKEHOLDER CONTRACT RETRIEVAL =====
 
-        // Verify role array contains both
-        address[] memory farmers = stakeholderRegistry.getStakeholdersByRole(StakeholderRegistry.StakeholderRole.FARMER);
+    /**
+     * @dev Test getStakeholderContract with registered stakeholder
+     */
+    function testFuzzGetStakeholderContractRegistered(
+        address stakeholderAddr,
+        uint256 roleSeed,
+        string memory name,
+        string memory license
+    ) public {
+        vm.assume(stakeholderAddr != address(0));
+        name = _sanitizeString(name, "TestStakeholder");
+        license = _sanitizeString(license, string(abi.encodePacked("LIC", vm.toString(uint160(stakeholderAddr)))));
+        
+        Stakeholder.StakeholderRole role = _getRandomRole(roleSeed);
+        
+        // Create stakeholder
+        address contractAddr = _createStakeholder(stakeholderAddr, role, name, license);
+        
+        // Get stakeholder contract
+        address retrievedContract = stakeholderRegistry.getStakeholderContract(stakeholderAddr);
+        
+        assertEq(retrievedContract, contractAddr);
+        assertTrue(retrievedContract != address(0));
+    }
+
+    /**
+     * @dev Test getStakeholderContract with unregistered address
+     */
+    function testFuzzGetStakeholderContractUnregistered(address unregisteredAddr) public {
+        vm.assume(unregisteredAddr != address(0));
+        // Ensure address is not one of our pre-registered addresses
+        vm.assume(unregisteredAddr != admin);
+        vm.assume(unregisteredAddr != farmer1);
+        vm.assume(unregisteredAddr != distributor1);
+        
+        address retrievedContract = stakeholderRegistry.getStakeholderContract(unregisteredAddr);
+        assertEq(retrievedContract, address(0));
+    }
+
+    // ===== STAKEHOLDER INFO RETRIEVAL =====
+
+    /**
+     * @dev Test getStakeholderInfo with registered stakeholder
+     */
+    function testFuzzGetStakeholderInfoRegistered(
+        address stakeholderAddr,
+        uint256 roleSeed,
+        string memory name,
+        string memory license
+    ) public {
+        vm.assume(stakeholderAddr != address(0));
+        name = _sanitizeString(name, "TestStakeholder");
+        license = _sanitizeString(license, string(abi.encodePacked("LIC", vm.toString(uint160(stakeholderAddr)))));
+        
+        Stakeholder.StakeholderRole role = _getRandomRole(roleSeed);
+        
+        // Create stakeholder
+        _createStakeholder(stakeholderAddr, role, name, license);
+        
+        // Get stakeholder info
+        (
+            address retrievedAddr,
+            Stakeholder.StakeholderRole retrievedRole,
+            string memory retrievedName,
+            string memory retrievedLicense,
+            string memory location,
+            string memory certifications,
+            bool isActive,
+            uint256 registeredAt,
+            uint256 lastActivity
+        ) = stakeholderRegistry.getStakeholderInfo(stakeholderAddr);
+        
+        assertEq(retrievedAddr, stakeholderAddr);
+        assertEq(uint8(retrievedRole), uint8(role));
+        assertEq(retrievedName, name);
+        assertEq(retrievedLicense, license);
+        assertEq(location, "Location");
+        assertEq(certifications, "Certifications");
+        assertTrue(isActive);
+        assertTrue(registeredAt > 0);
+        assertTrue(lastActivity > 0);
+    }
+
+    /**
+     * @dev Test getStakeholderInfo with unregistered address
+     */
+    function testFuzzGetStakeholderInfoUnregistered(address unregisteredAddr) public {
+        vm.assume(unregisteredAddr != address(0));
+        // Ensure address is not one of our pre-registered addresses
+        vm.assume(unregisteredAddr != admin);
+        vm.assume(unregisteredAddr != farmer1);
+        vm.assume(unregisteredAddr != distributor1);
+        
+        (
+            address retrievedAddr,
+            Stakeholder.StakeholderRole retrievedRole,
+            string memory retrievedName,
+            string memory retrievedLicense,
+            string memory location,
+            string memory certifications,
+            bool isActive,
+            uint256 registeredAt,
+            uint256 lastActivity
+        ) = stakeholderRegistry.getStakeholderInfo(unregisteredAddr);
+        
+        assertEq(retrievedAddr, address(0));
+        assertEq(uint8(retrievedRole), uint8(Stakeholder.StakeholderRole.FARMER)); // Default value
+        assertEq(retrievedName, "");
+        assertEq(retrievedLicense, "");
+        assertEq(location, "");
+        assertEq(certifications, "");
+        assertFalse(isActive);
+        assertEq(registeredAt, 0);
+        assertEq(lastActivity, 0);
+    }
+
+    // ===== STAKEHOLDERS BY ROLE =====
+
+    /**
+     * @dev Test getStakeholdersByRole with multiple stakeholders of same role
+     */
+    function testFuzzGetStakeholdersByRoleSameRole(
+        uint8 stakeholderCount,
+        uint256 roleSeed
+    ) public {
+        stakeholderCount = stakeholderCount % 5 + 1; // 1-5 stakeholders
+        Stakeholder.StakeholderRole role = _getRandomRole(roleSeed);
+        
+        address[] memory createdStakeholders = new address[](stakeholderCount);
+        
+        // Create multiple stakeholders with same role
+        for (uint256 i = 0; i < stakeholderCount; i++) {
+            address stakeholderAddr = address(uint160(0x1000 + i));
+            string memory name = string(abi.encodePacked("Stakeholder", vm.toString(i)));
+            string memory license = string(abi.encodePacked("LIC", vm.toString(i)));
+            
+            _createStakeholder(stakeholderAddr, role, name, license);
+            createdStakeholders[i] = stakeholderAddr;
+        }
+        
+        // Get stakeholders by role
+        address[] memory retrievedStakeholders = stakeholderRegistry.getStakeholdersByRole(role);
+        
+        assertEq(retrievedStakeholders.length, stakeholderCount);
+        
+        // Verify all created stakeholders are in the result
+        for (uint256 i = 0; i < stakeholderCount; i++) {
+            bool found = false;
+            for (uint256 j = 0; j < retrievedStakeholders.length; j++) {
+                if (retrievedStakeholders[j] == createdStakeholders[i]) {
+                    found = true;
+                    break;
+                }
+            }
+            assertTrue(found, "Created stakeholder not found in results");
+        }
+    }
+
+    /**
+     * @dev Test getStakeholdersByRole with empty role
+     */
+    function testFuzzGetStakeholdersByRoleEmpty(uint256 roleSeed) public {
+        Stakeholder.StakeholderRole emptyRole = _getRandomRole(roleSeed);
+        
+        // Don't create any stakeholders with this role
+        address[] memory stakeholders = stakeholderRegistry.getStakeholdersByRole(emptyRole);
+        
+        assertEq(stakeholders.length, 0);
+    }
+
+    /**
+     * @dev Test getStakeholdersByRole with mixed roles
+     */
+    function testGetStakeholdersByRoleMixed() public {
+        // Create stakeholders with different roles
+        _createStakeholder(farmer1, Stakeholder.StakeholderRole.FARMER, "Farmer1", "FARM001");
+        _createStakeholder(farmer2, Stakeholder.StakeholderRole.FARMER, "Farmer2", "FARM002");
+        _createStakeholder(distributor1, Stakeholder.StakeholderRole.DISTRIBUTOR, "Dist1", "DIST001");
+        _createStakeholder(processor1, Stakeholder.StakeholderRole.PROCESSOR, "Proc1", "PROC001");
+        _createStakeholder(retailer1, Stakeholder.StakeholderRole.RETAILER, "Retail1", "RETAIL001");
+        
+        // Test each role
+        address[] memory farmers = stakeholderRegistry.getStakeholdersByRole(Stakeholder.StakeholderRole.FARMER);
+        address[] memory distributors = stakeholderRegistry.getStakeholdersByRole(Stakeholder.StakeholderRole.DISTRIBUTOR);
+        address[] memory processors = stakeholderRegistry.getStakeholdersByRole(Stakeholder.StakeholderRole.PROCESSOR);
+        address[] memory retailers = stakeholderRegistry.getStakeholdersByRole(Stakeholder.StakeholderRole.RETAILER);
+        
         assertEq(farmers.length, 2);
+        assertEq(distributors.length, 1);
+        assertEq(processors.length, 1);
+        assertEq(retailers.length, 1);
+        
+        // Verify specific addresses
         assertTrue(farmers[0] == farmer1 || farmers[1] == farmer1);
         assertTrue(farmers[0] == farmer2 || farmers[1] == farmer2);
-
-        assertEq(stakeholderRegistry.totalStakeholders(), 2);
+        assertEq(distributors[0], distributor1);
+        assertEq(processors[0], processor1);
+        assertEq(retailers[0], retailer1);
     }
 
-    // ===== STAKEHOLDER QUERY TESTS =====
+    // ===== STAKEHOLDER BY LICENSE =====
 
     /**
-     * @dev Test isRegisteredStakeholder function
+     * @dev Test getStakeholderByLicense with registered license
      */
-    function testFuzzIsRegisteredStakeholder(
-        string memory businessName,
-        string memory businessLicense
+    function testFuzzGetStakeholderByLicenseRegistered(
+        address stakeholderAddr,
+        uint256 roleSeed,
+        string memory name,
+        string memory license
     ) public {
-        vm.assume(bytes(businessName).length > 0);
-        vm.assume(bytes(businessLicense).length > 0);
-
-        // Should return false before registration
-        assertFalse(stakeholderRegistry.isRegisteredStakeholder(farmer, StakeholderRegistry.StakeholderRole.FARMER));
-        assertFalse(stakeholderRegistry.isRegisteredStakeholder(farmer, StakeholderRegistry.StakeholderRole.PROCESSOR));
-
-        vm.prank(admin);
-        stakeholderRegistry.registerStakeholder(
-            farmer,
-            StakeholderRegistry.StakeholderRole.FARMER,
-            businessName,
-            businessLicense,
-            "Location",
-            "Certs"
-        );
-
-        // Should return true for correct role
-        assertTrue(stakeholderRegistry.isRegisteredStakeholder(farmer, StakeholderRegistry.StakeholderRole.FARMER));
+        vm.assume(stakeholderAddr != address(0));
+        name = _sanitizeString(name, "TestStakeholder");
+        license = _sanitizeString(license, string(abi.encodePacked("LIC", vm.toString(uint160(stakeholderAddr)))));
         
-        // Should return false for incorrect role
-        assertFalse(stakeholderRegistry.isRegisteredStakeholder(farmer, StakeholderRegistry.StakeholderRole.PROCESSOR));
-        assertFalse(stakeholderRegistry.isRegisteredStakeholder(farmer, StakeholderRegistry.StakeholderRole.DISTRIBUTOR));
-        assertFalse(stakeholderRegistry.isRegisteredStakeholder(farmer, StakeholderRegistry.StakeholderRole.RETAILER));
-
-        // Should return false for unregistered address
-        assertFalse(stakeholderRegistry.isRegisteredStakeholder(processor, StakeholderRegistry.StakeholderRole.FARMER));
-    }
-
-    /**
-     * @dev Test isActiveStakeholder function
-     */
-    function testFuzzIsActiveStakeholder(
-        string memory businessName,
-        string memory businessLicense
-    ) public {
-        vm.assume(bytes(businessName).length > 0);
-        vm.assume(bytes(businessLicense).length > 0);
-
-        // Should return false before registration
-        assertFalse(stakeholderRegistry.isActiveStakeholder(farmer));
-
-        vm.prank(admin);
-        stakeholderRegistry.registerStakeholder(
-            farmer,
-            StakeholderRegistry.StakeholderRole.FARMER,
-            businessName,
-            businessLicense,
-            "Location",
-            "Certs"
-        );
-
-        // Should return true after registration
-        assertTrue(stakeholderRegistry.isActiveStakeholder(farmer));
-
-        // Should return false for unregistered address
-        assertFalse(stakeholderRegistry.isActiveStakeholder(processor));
-    }
-
-    /**
-     * @dev Test getStakeholderInfo for non-existent stakeholder
-     */
-    function testFuzzGetStakeholderInfoNonExistent(address stakeholder) public {
-        vm.assume(stakeholder != address(0));
+        Stakeholder.StakeholderRole role = _getRandomRole(roleSeed);
         
-        StakeholderRegistry.StakeholderInfo memory info = stakeholderRegistry.getStakeholderInfo(stakeholder);
-        assertEq(info.stakeholderAddress, address(0));
-        assertFalse(info.isActive);
-        assertEq(info.registeredAt, 0);
-        assertEq(info.lastActivity, 0);
-    }
-
-    /**
-     * @dev Test getStakeholdersByRole for empty role
-     */
-    function testFuzzGetStakeholdersByRoleEmpty() public {
-        address[] memory farmers = stakeholderRegistry.getStakeholdersByRole(StakeholderRegistry.StakeholderRole.FARMER);
-        assertEq(farmers.length, 0);
-
-        address[] memory processors = stakeholderRegistry.getStakeholdersByRole(StakeholderRegistry.StakeholderRole.PROCESSOR);
-        assertEq(processors.length, 0);
-
-        address[] memory distributors = stakeholderRegistry.getStakeholdersByRole(StakeholderRegistry.StakeholderRole.DISTRIBUTOR);
-        assertEq(distributors.length, 0);
-
-        address[] memory retailers = stakeholderRegistry.getStakeholdersByRole(StakeholderRegistry.StakeholderRole.RETAILER);
-        assertEq(retailers.length, 0);
-    }
-
-    // ===== UPDATE ACTIVITY TESTS =====
-
-    /**
-     * @dev Test updateLastActivity function
-     */
-    function testFuzzUpdateLastActivity(
-        string memory businessName,
-        string memory businessLicense
-    ) public {
-        vm.assume(bytes(businessName).length > 0);
-        vm.assume(bytes(businessLicense).length > 0);
-
-        vm.prank(admin);
-        stakeholderRegistry.registerStakeholder(
-            farmer,
-            StakeholderRegistry.StakeholderRole.FARMER,
-            businessName,
-            businessLicense,
-            "Location",
-            "Certs"
-        );
-
-        uint256 initialActivity = stakeholderRegistry.getStakeholderInfo(farmer).lastActivity;
-
-        // Advance time
-        vm.warp(block.timestamp + 1000);
-
-        vm.expectEmit(true, false, false, true);
-        emit StakeholderUpdated(farmer, block.timestamp);
-
-        stakeholderRegistry.updateLastActivity(farmer);
-
-        uint256 newActivity = stakeholderRegistry.getStakeholderInfo(farmer).lastActivity;
-        assertTrue(newActivity > initialActivity);
-        assertEq(newActivity, block.timestamp);
-    }
-
-    /**
-     * @dev Test updateLastActivity for inactive stakeholder fails
-     */
-    function testFuzzUpdateLastActivityInactive(address stakeholder) public {
-        vm.assume(stakeholder != address(0));
-
-        vm.expectRevert("Stakeholder is not active");
-        stakeholderRegistry.updateLastActivity(stakeholder);
-    }
-
-    // ===== UPDATE STAKEHOLDER INFO TESTS =====
-
-    /**
-     * @dev Test updateStakeholderInfo function
-     */
-    function testFuzzUpdateStakeholderInfo(
-        string memory businessName,
-        string memory businessLicense,
-        string memory newBusinessName,
-        string memory newLocation,
-        string memory newCertifications
-    ) public {
-        vm.assume(bytes(businessName).length > 0);
-        vm.assume(bytes(businessLicense).length > 0);
-        vm.assume(bytes(newBusinessName).length > 0);
-        vm.assume(bytes(newLocation).length > 0);
-        vm.assume(bytes(newCertifications).length > 0);
-
-        vm.startPrank(admin);
-
-        stakeholderRegistry.registerStakeholder(
-            farmer,
-            StakeholderRegistry.StakeholderRole.FARMER,
-            businessName,
-            businessLicense,
-            "Original Location",
-            "Original Certs"
-        );
-
-        uint256 initialActivity = stakeholderRegistry.getStakeholderInfo(farmer).lastActivity;
-
-        // Advance time
-        vm.warp(block.timestamp + 1000);
-
-        vm.expectEmit(true, false, false, true);
-        emit StakeholderUpdated(farmer, block.timestamp);
-
-        stakeholderRegistry.updateStakeholderInfo(
-            farmer,
-            newBusinessName,
-            newLocation,
-            newCertifications
-        );
-
-        vm.stopPrank();
-
-        // Verify updates
-        StakeholderRegistry.StakeholderInfo memory info = stakeholderRegistry.getStakeholderInfo(farmer);
-        assertEq(info.businessName, newBusinessName);
-        assertEq(info.location, newLocation);
-        assertEq(info.certifications, newCertifications);
-        assertTrue(info.lastActivity > initialActivity);
-
-        // Verify unchangeable fields remain the same
-        assertEq(info.stakeholderAddress, farmer);
-        assertEq(uint(info.role), uint(StakeholderRegistry.StakeholderRole.FARMER));
-        assertEq(info.businessLicense, businessLicense);
-        assertTrue(info.isActive);
-    }
-
-    /**
-     * @dev Test updateStakeholderInfo access control
-     */
-    function testFuzzUpdateStakeholderInfoAccessControl(
-        address caller,
-        string memory businessName,
-        string memory businessLicense
-    ) public {
-        vm.assume(caller != admin);
-        vm.assume(bytes(businessName).length > 0);
-        vm.assume(bytes(businessLicense).length > 0);
-
-        vm.prank(admin);
-        stakeholderRegistry.registerStakeholder(
-            farmer,
-            StakeholderRegistry.StakeholderRole.FARMER,
-            businessName,
-            businessLicense,
-            "Location",
-            "Certs"
-        );
-
-        vm.expectRevert("Only admin can call this function");
-        vm.prank(caller);
-        stakeholderRegistry.updateStakeholderInfo(
-            farmer,
-            "New Name",
-            "New Location",
-            "New Certs"
-        );
-    }
-
-    /**
-     * @dev Test updateStakeholderInfo for inactive stakeholder
-     */
-    function testFuzzUpdateStakeholderInfoInactive(
-        string memory businessName,
-        string memory businessLicense
-    ) public {
-        vm.assume(bytes(businessName).length > 0);
-        vm.assume(bytes(businessLicense).length > 0);
-
-        vm.startPrank(admin);
-
-        stakeholderRegistry.registerStakeholder(
-            farmer,
-            StakeholderRegistry.StakeholderRole.FARMER,
-            businessName,
-            businessLicense,
-            "Location",
-            "Certs"
-        );
-
-        // Deactivate stakeholder
-        stakeholderRegistry.deactivateStakeholder(farmer);
-
-        // Try to update - should fail
-        vm.expectRevert("Stakeholder is not active");
-        stakeholderRegistry.updateStakeholderInfo(
-            farmer,
-            "New Name",
-            "New Location",
-            "New Certs"
-        );
-
-        vm.stopPrank();
-    }
-
-    // ===== DEACTIVATION TESTS =====
-
-    /**
-     * @dev Test deactivateStakeholder function
-     */
-    function testFuzzDeactivateStakeholder(
-        string memory businessName,
-        string memory businessLicense
-    ) public {
-        vm.assume(bytes(businessName).length > 0);
-        vm.assume(bytes(businessLicense).length > 0);
-
-        vm.startPrank(admin);
-
-        stakeholderRegistry.registerStakeholder(
-            farmer,
-            StakeholderRegistry.StakeholderRole.FARMER,
-            businessName,
-            businessLicense,
-            "Location",
-            "Certs"
-        );
-
-        // Verify active before deactivation
-        assertTrue(stakeholderRegistry.isActiveStakeholder(farmer));
-        assertTrue(stakeholderRegistry.isRegisteredStakeholder(farmer, StakeholderRegistry.StakeholderRole.FARMER));
-
-        vm.expectEmit(true, false, false, true);
-        emit StakeholderDeactivated(farmer, block.timestamp);
-
-        stakeholderRegistry.deactivateStakeholder(farmer);
-
-        vm.stopPrank();
-
-        // Verify deactivation
-        assertFalse(stakeholderRegistry.isActiveStakeholder(farmer));
-        assertFalse(stakeholderRegistry.isRegisteredStakeholder(farmer, StakeholderRegistry.StakeholderRole.FARMER));
-
-        StakeholderRegistry.StakeholderInfo memory info = stakeholderRegistry.getStakeholderInfo(farmer);
-        assertFalse(info.isActive);
-        // Other fields should remain unchanged
-        assertEq(info.stakeholderAddress, farmer);
-        assertEq(uint(info.role), uint(StakeholderRegistry.StakeholderRole.FARMER));
-        assertEq(info.businessName, businessName);
-        assertEq(info.businessLicense, businessLicense);
-    }
-
-    /**
-     * @dev Test deactivateStakeholder access control
-     */
-    function testFuzzDeactivateStakeholderAccessControl(
-        address caller,
-        string memory businessName,
-        string memory businessLicense
-    ) public {
-        vm.assume(caller != admin);
-        vm.assume(bytes(businessName).length > 0);
-        vm.assume(bytes(businessLicense).length > 0);
-
-        vm.prank(admin);
-        stakeholderRegistry.registerStakeholder(
-            farmer,
-            StakeholderRegistry.StakeholderRole.FARMER,
-            businessName,
-            businessLicense,
-            "Location",
-            "Certs"
-        );
-
-        vm.expectRevert("Only admin can call this function");
-        vm.prank(caller);
-        stakeholderRegistry.deactivateStakeholder(farmer);
-    }
-
-    /**
-     * @dev Test deactivateStakeholder for already inactive stakeholder
-     */
-    function testFuzzDeactivateStakeholderAlreadyInactive(
-        string memory businessName,
-        string memory businessLicense
-    ) public {
-        vm.assume(bytes(businessName).length > 0);
-        vm.assume(bytes(businessLicense).length > 0);
-
-        vm.startPrank(admin);
-
-        stakeholderRegistry.registerStakeholder(
-            farmer,
-            StakeholderRegistry.StakeholderRole.FARMER,
-            businessName,
-            businessLicense,
-            "Location",
-            "Certs"
-        );
-
-        // First deactivation should succeed
-        stakeholderRegistry.deactivateStakeholder(farmer);
-
-        // Second deactivation should fail
-        vm.expectRevert("Stakeholder is not active");
-        stakeholderRegistry.deactivateStakeholder(farmer);
-
-        vm.stopPrank();
-    }
-
-    /**
-     * @dev Test deactivateStakeholder for non-existent stakeholder
-     */
-    function testFuzzDeactivateStakeholderNonExistent(address stakeholder) public {
-        vm.assume(stakeholder != address(0));
-
-        vm.expectRevert("Stakeholder is not active");
-        vm.prank(admin);
-        stakeholderRegistry.deactivateStakeholder(stakeholder);
-    }
-
-    // ===== ADMIN TRANSFER TESTS =====
-
-    /**
-     * @dev Test transferAdmin function
-     */
-    function testFuzzTransferAdmin(address newAdmin) public {
-        vm.assume(newAdmin != address(0));
-        vm.assume(newAdmin != admin);
-
-        assertEq(stakeholderRegistry.admin(), admin);
-
-        vm.prank(admin);
-        stakeholderRegistry.transferAdmin(newAdmin);
-
-        assertEq(stakeholderRegistry.admin(), newAdmin);
-    }
-
-    /**
-     * @dev Test transferAdmin access control
-     */
-    function testFuzzTransferAdminAccessControl(address caller, address newAdmin) public {
-        vm.assume(caller != admin);
-        vm.assume(newAdmin != address(0));
-
-        vm.expectRevert("Only admin can call this function");
-        vm.prank(caller);
-        stakeholderRegistry.transferAdmin(newAdmin);
-    }
-
-    /**
-     * @dev Test transferAdmin with zero address
-     */
-    function testFuzzTransferAdminZeroAddress() public {
-        vm.expectRevert("Invalid new admin address");
-        vm.prank(admin);
-        stakeholderRegistry.transferAdmin(address(0));
-    }
-
-    /**
-     * @dev Test admin functions after transfer
-     */
-    function testFuzzAdminFunctionsAfterTransfer(
-        address newAdmin,
-        string memory businessName,
-        string memory businessLicense
-    ) public {
-        vm.assume(newAdmin != address(0));
-        vm.assume(newAdmin != admin);
-        vm.assume(bytes(businessName).length > 0);
-        vm.assume(bytes(businessLicense).length > 0);
-
-        // Transfer admin
-        vm.prank(admin);
-        stakeholderRegistry.transferAdmin(newAdmin);
-
-        // Old admin should not be able to register stakeholders
-        vm.expectRevert("Only admin can call this function");
-        vm.prank(admin);
-        stakeholderRegistry.registerStakeholder(
-            farmer,
-            StakeholderRegistry.StakeholderRole.FARMER,
-            businessName,
-            businessLicense,
-            "Location",
-            "Certs"
-        );
-
-        // New admin should be able to register stakeholders
-        vm.prank(newAdmin);
-        stakeholderRegistry.registerStakeholder(
-            farmer,
-            StakeholderRegistry.StakeholderRole.FARMER,
-            businessName,
-            businessLicense,
-            "Location",
-            "Certs"
-        );
-
-        assertTrue(stakeholderRegistry.isActiveStakeholder(farmer));
-    }
-
-    // ===== COMPLEX WORKFLOW TESTS =====
-
-    /**
-     * @dev Test complete stakeholder lifecycle
-     */
-    function testFuzzCompleteStakeholderLifecycle(
-        string memory businessName,
-        string memory businessLicense,
-        string memory newLocation,
-        string memory newCerts
-    ) public {
-        vm.assume(bytes(businessName).length > 0);
-        vm.assume(bytes(businessLicense).length > 0);
-        vm.assume(bytes(newLocation).length > 0);
-        vm.assume(bytes(newCerts).length > 0);
-
-        vm.startPrank(admin);
-
-        // 1. Register stakeholder
-        stakeholderRegistry.registerStakeholder(
-            farmer,
-            StakeholderRegistry.StakeholderRole.FARMER,
-            businessName,
-            businessLicense,
-            "Original Location",
-            "Original Certs"
-        );
-
-        // 2. Verify registration
-        assertTrue(stakeholderRegistry.isActiveStakeholder(farmer));
-        assertTrue(stakeholderRegistry.isRegisteredStakeholder(farmer, StakeholderRegistry.StakeholderRole.FARMER));
-        assertEq(stakeholderRegistry.totalStakeholders(), 1);
-
-        // 3. Update activity
-        uint256 initialActivity = stakeholderRegistry.getStakeholderInfo(farmer).lastActivity;
-        vm.warp(block.timestamp + 100);
+        // Create stakeholder
+        _createStakeholder(stakeholderAddr, role, name, license);
         
-        vm.stopPrank();
-        stakeholderRegistry.updateLastActivity(farmer);
-        vm.startPrank(admin);
-
-        assertTrue(stakeholderRegistry.getStakeholderInfo(farmer).lastActivity > initialActivity);
-
-        // 4. Update stakeholder info
-        stakeholderRegistry.updateStakeholderInfo(
-            farmer,
-            businessName,
-            newLocation,
-            newCerts
-        );
-
-        StakeholderRegistry.StakeholderInfo memory info = stakeholderRegistry.getStakeholderInfo(farmer);
-        assertEq(info.location, newLocation);
-        assertEq(info.certifications, newCerts);
-
-        // 5. Deactivate stakeholder
-        stakeholderRegistry.deactivateStakeholder(farmer);
-
-        assertFalse(stakeholderRegistry.isActiveStakeholder(farmer));
-        assertFalse(stakeholderRegistry.isRegisteredStakeholder(farmer, StakeholderRegistry.StakeholderRole.FARMER));
-
-        vm.stopPrank();
-
-        // 6. Verify functions fail for inactive stakeholder
-        vm.expectRevert("Stakeholder is not active");
-        stakeholderRegistry.updateLastActivity(farmer);
-
-        vm.expectRevert("Stakeholder is not active");
-        vm.prank(admin);
-        stakeholderRegistry.updateStakeholderInfo(
-            farmer,
-            businessName,
-            newLocation,
-            newCerts
-        );
+        // Get stakeholder by license
+        address retrievedAddr = stakeholderRegistry.getStakeholderByLicense(license);
+        
+        assertEq(retrievedAddr, stakeholderAddr);
     }
 
     /**
-     * @dev Test edge cases with empty strings
+     * @dev Test getStakeholderByLicense with non-existent license
      */
-    function testFuzzEmptyStringHandling() public {
-        vm.startPrank(admin);
-
-        // Should allow empty strings for optional fields
-        stakeholderRegistry.registerStakeholder(
-            farmer,
-            StakeholderRegistry.StakeholderRole.FARMER,
-            "Business Name",
-            "License123",
-            "", // Empty location
-            "" // Empty certifications
-        );
-
-        StakeholderRegistry.StakeholderInfo memory info = stakeholderRegistry.getStakeholderInfo(farmer);
-        assertEq(info.location, "");
-        assertEq(info.certifications, "");
-        assertTrue(info.isActive);
-
-        // Should allow updating with empty strings
-        stakeholderRegistry.updateStakeholderInfo(
-            farmer,
-            "Updated Name",
-            "", // Empty location
-            "" // Empty certifications
-        );
-
-        info = stakeholderRegistry.getStakeholderInfo(farmer);
-        assertEq(info.businessName, "Updated Name");
-        assertEq(info.location, "");
-        assertEq(info.certifications, "");
-
-        vm.stopPrank();
+    function testFuzzGetStakeholderByLicenseNonExistent(string memory nonExistentLicense) public {
+        nonExistentLicense = _sanitizeString(nonExistentLicense, "NONEXISTENT");
+        
+        // Ensure this license doesn't exist by not creating any stakeholder with it
+        address retrievedAddr = stakeholderRegistry.getStakeholderByLicense(nonExistentLicense);
+        
+        assertEq(retrievedAddr, address(0));
     }
 
     /**
-     * @dev Test gas efficiency with multiple stakeholders
+     * @dev Test getStakeholderByLicense with empty license
      */
-    function testFuzzGasEfficiencyMultipleStakeholders() public {
-        vm.startPrank(admin);
+    function testGetStakeholderByLicenseEmpty() public {
+        address retrievedAddr = stakeholderRegistry.getStakeholderByLicense("");
+        assertEq(retrievedAddr, address(0));
+    }
 
-        // Register 10 stakeholders
-        for (uint i = 0; i < 10; i++) {
-            address stakeholder = address(uint160(0x1000 + i));
-            stakeholderRegistry.registerStakeholder(
-                stakeholder,
-                StakeholderRegistry.StakeholderRole.FARMER,
-                string(abi.encodePacked("Business", i)),
-                string(abi.encodePacked("License", i)),
-                string(abi.encodePacked("Location", i)),
-                string(abi.encodePacked("Certs", i))
-            );
+    // ===== BUSINESS NAME SEARCH =====
+
+    /**
+     * @dev Test findStakeholdersByBusinessName with exact match
+     */
+    function testFuzzFindStakeholdersByBusinessNameExact(
+        address stakeholderAddr,
+        uint256 roleSeed,
+        string memory businessName,
+        string memory license
+    ) public {
+        vm.assume(stakeholderAddr != address(0));
+        businessName = _sanitizeString(businessName, "TestBusiness");
+        license = _sanitizeString(license, string(abi.encodePacked("LIC", vm.toString(uint160(stakeholderAddr)))));
+        
+        Stakeholder.StakeholderRole role = _getRandomRole(roleSeed);
+        
+        // Create stakeholder
+        _createStakeholder(stakeholderAddr, role, businessName, license);
+        
+        // Search for exact business name
+        address[] memory results = stakeholderRegistry.findStakeholdersByBusinessName(businessName);
+        
+        assertEq(results.length, 1);
+        assertEq(results[0], stakeholderAddr);
+    }
+
+    /**
+     * @dev Test findStakeholdersByBusinessName with partial match
+     */
+    function testFindStakeholdersByBusinessNamePartial() public {
+        // Create stakeholders with related business names
+        _createStakeholder(farmer1, Stakeholder.StakeholderRole.FARMER, "FreshFarm Co", "FARM001");
+        _createStakeholder(farmer2, Stakeholder.StakeholderRole.FARMER, "Farm Fresh Ltd", "FARM002");
+        _createStakeholder(distributor1, Stakeholder.StakeholderRole.DISTRIBUTOR, "Quick Distribution", "DIST001");
+        
+        // Search for partial match "Farm"
+        address[] memory farmResults = stakeholderRegistry.findStakeholdersByBusinessName("Farm");
+        
+        assertEq(farmResults.length, 2);
+        assertTrue(farmResults[0] == farmer1 || farmResults[1] == farmer1);
+        assertTrue(farmResults[0] == farmer2 || farmResults[1] == farmer2);
+        
+        // Search for partial match "Fresh"
+        address[] memory freshResults = stakeholderRegistry.findStakeholdersByBusinessName("Fresh");
+        
+        assertEq(freshResults.length, 2);
+        assertTrue(freshResults[0] == farmer1 || freshResults[1] == farmer1);
+        assertTrue(freshResults[0] == farmer2 || freshResults[1] == farmer2);
+        
+        // Search for non-matching partial
+        address[] memory noResults = stakeholderRegistry.findStakeholdersByBusinessName("NonExistent");
+        
+        assertEq(noResults.length, 0);
+    }
+
+    /**
+     * @dev Test findStakeholdersByBusinessName with empty search
+     */
+    function testFindStakeholdersByBusinessNameEmpty() public {
+        // Create some stakeholders
+        _createStakeholder(farmer1, Stakeholder.StakeholderRole.FARMER, "FreshFarm Co", "FARM001");
+        _createStakeholder(distributor1, Stakeholder.StakeholderRole.DISTRIBUTOR, "Quick Distribution", "DIST001");
+        
+        // Search with empty string - the contract's _contains function returns true for empty needle
+        // This is actually correct behavior in many string searching algorithms
+        address[] memory results = stakeholderRegistry.findStakeholdersByBusinessName("");
+        
+        // Empty string matches all strings in the contract implementation
+        assertEq(results.length, 2);
+    }
+
+    // ===== EDGE CASE TESTS =====
+
+    /**
+     * @dev Test multiple operations with same stakeholder
+     */
+    function testFuzzMultipleOperationsSameStakeholder(
+        address stakeholderAddr,
+        uint256 roleSeed,
+        string memory name,
+        string memory license
+    ) public {
+        vm.assume(stakeholderAddr != address(0));
+        name = _sanitizeString(name, "TestStakeholder");
+        license = _sanitizeString(license, string(abi.encodePacked("LIC", vm.toString(uint160(stakeholderAddr)))));
+        
+        Stakeholder.StakeholderRole role = _getRandomRole(roleSeed);
+        
+        // Create stakeholder
+        address contractAddr = _createStakeholder(stakeholderAddr, role, name, license);
+        
+        // Test all registry functions with same stakeholder
+        assertTrue(stakeholderRegistry.isRegisteredStakeholder(stakeholderAddr, role));
+        assertTrue(stakeholderRegistry.isActiveStakeholder(stakeholderAddr));
+        assertEq(stakeholderRegistry.getStakeholderContract(stakeholderAddr), contractAddr);
+        
+        (address addr, , string memory retrievedName, string memory retrievedLicense, , , bool active, , ) = 
+            stakeholderRegistry.getStakeholderInfo(stakeholderAddr);
+        
+        assertEq(addr, stakeholderAddr);
+        assertEq(retrievedName, name);
+        assertEq(retrievedLicense, license);
+        assertTrue(active);
+        
+        address[] memory roleStakeholders = stakeholderRegistry.getStakeholdersByRole(role);
+        bool foundInRole = false;
+        for (uint256 i = 0; i < roleStakeholders.length; i++) {
+            if (roleStakeholders[i] == stakeholderAddr) {
+                foundInRole = true;
+                break;
+            }
         }
-
-        // Verify all stakeholders are registered
-        assertEq(stakeholderRegistry.totalStakeholders(), 10);
-        address[] memory farmers = stakeholderRegistry.getStakeholdersByRole(StakeholderRegistry.StakeholderRole.FARMER);
-        assertEq(farmers.length, 10);
-
-        vm.stopPrank();
+        assertTrue(foundInRole);
+        
+        assertEq(stakeholderRegistry.getStakeholderByLicense(license), stakeholderAddr);
+        
+        address[] memory nameResults = stakeholderRegistry.findStakeholdersByBusinessName(name);
+        bool foundInName = false;
+        for (uint256 i = 0; i < nameResults.length; i++) {
+            if (nameResults[i] == stakeholderAddr) {
+                foundInName = true;
+                break;
+            }
+        }
+        assertTrue(foundInName);
     }
 
-    // ===== EVENT EMISSION TESTS =====
+    /**
+     * @dev Test case sensitivity in business name search
+     */
+    function testBusinessNameSearchCaseSensitive() public {
+        _createStakeholder(farmer1, Stakeholder.StakeholderRole.FARMER, "FreshFarm", "FARM001");
+        
+        // Test exact case
+        address[] memory exactResults = stakeholderRegistry.findStakeholdersByBusinessName("FreshFarm");
+        assertEq(exactResults.length, 1);
+        assertEq(exactResults[0], farmer1);
+        
+        // Test different case (should not match - case sensitive)
+        address[] memory lowerResults = stakeholderRegistry.findStakeholdersByBusinessName("freshfarm");
+        assertEq(lowerResults.length, 0);
+        
+        address[] memory upperResults = stakeholderRegistry.findStakeholdersByBusinessName("FRESHFARM");
+        assertEq(upperResults.length, 0);
+    }
 
     /**
-     * @dev Define events for testing
+     * @dev Test behavior with invalid contract addresses in registry
      */
-    event StakeholderRegistered(
-        address indexed stakeholder,
-        StakeholderRegistry.StakeholderRole indexed role,
-        string businessName,
-        uint256 timestamp
-    );
+    function testInvalidContractHandling() public {
+        // This test verifies the try-catch blocks handle invalid contracts gracefully
+        // We can't easily create invalid registry entries, so we test with zero addresses
+        
+        assertFalse(stakeholderRegistry.isRegisteredStakeholder(address(0), Stakeholder.StakeholderRole.FARMER));
+        assertFalse(stakeholderRegistry.isActiveStakeholder(address(0)));
+        assertEq(stakeholderRegistry.getStakeholderContract(address(0)), address(0));
+        
+        (address addr, , , , , , bool active, , ) = stakeholderRegistry.getStakeholderInfo(address(0));
+        assertEq(addr, address(0));
+        assertFalse(active);
+    }
 
-    event StakeholderUpdated(address indexed stakeholder, uint256 timestamp);
-
-    event StakeholderDeactivated(
-        address indexed stakeholder,
-        uint256 timestamp
-    );
+    // ===== PERFORMANCE TESTS =====
 
     /**
-     * @dev Test event emissions are correct
+     * @dev Test performance with many stakeholders
      */
-    function testFuzzEventEmissions(
-        string memory businessName,
-        string memory businessLicense
-    ) public {
-        vm.assume(bytes(businessName).length > 0);
-        vm.assume(bytes(businessLicense).length > 0);
-
-        vm.startPrank(admin);
-
-        // Test StakeholderRegistered event
-        vm.expectEmit(true, true, false, true);
-        emit StakeholderRegistered(farmer, StakeholderRegistry.StakeholderRole.FARMER, businessName, block.timestamp);
+    function testManyStakeholders() public {
+        // Create many stakeholders
+        uint256 stakeholderCount = 20; // Reasonable number for testing
         
-        stakeholderRegistry.registerStakeholder(
-            farmer,
-            StakeholderRegistry.StakeholderRole.FARMER,
-            businessName,
-            businessLicense,
-            "Location",
-            "Certs"
-        );
-
-        // Test StakeholderUpdated event from updateStakeholderInfo
-        vm.expectEmit(true, false, false, true);
-        emit StakeholderUpdated(farmer, block.timestamp);
+        for (uint256 i = 0; i < stakeholderCount; i++) {
+            address stakeholderAddr = address(uint160(0x2000 + i));
+            Stakeholder.StakeholderRole role = _getRandomRole(i);
+            string memory name = string(abi.encodePacked("Business", vm.toString(i)));
+            string memory license = string(abi.encodePacked("LIC", vm.toString(i)));
+            
+            _createStakeholder(stakeholderAddr, role, name, license);
+        }
         
-        stakeholderRegistry.updateStakeholderInfo(
-            farmer,
-            "New Name",
-            "New Location",
-            "New Certs"
-        );
-
-        vm.stopPrank();
-
-        // Test StakeholderUpdated event from updateLastActivity
-        vm.expectEmit(true, false, false, true);
-        emit StakeholderUpdated(farmer, block.timestamp);
+        // Test that operations still work efficiently
+        address[] memory farmers = stakeholderRegistry.getStakeholdersByRole(Stakeholder.StakeholderRole.FARMER);
+        address[] memory distributors = stakeholderRegistry.getStakeholdersByRole(Stakeholder.StakeholderRole.DISTRIBUTOR);
+        address[] memory processors = stakeholderRegistry.getStakeholdersByRole(Stakeholder.StakeholderRole.PROCESSOR);
+        address[] memory retailers = stakeholderRegistry.getStakeholdersByRole(Stakeholder.StakeholderRole.RETAILER);
         
-        stakeholderRegistry.updateLastActivity(farmer);
-
-        // Test StakeholderDeactivated event
-        vm.expectEmit(true, false, false, true);
-        emit StakeholderDeactivated(farmer, block.timestamp);
+        // Verify total count
+        assertEq(farmers.length + distributors.length + processors.length + retailers.length, stakeholderCount);
         
-        vm.prank(admin);
-        stakeholderRegistry.deactivateStakeholder(farmer);
+        // Test business name search still works
+        address[] memory businessResults = stakeholderRegistry.findStakeholdersByBusinessName("Business");
+        assertEq(businessResults.length, stakeholderCount);
     }
 }

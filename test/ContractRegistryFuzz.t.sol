@@ -2,822 +2,526 @@
 pragma solidity ^0.8.0;
 
 import "forge-std/Test.sol";
-import "../src/SmartContracts/ContractRegistry.sol";
+import "../src/SmartContracts/Registry.sol";
+import "../src/SmartContracts/Stakeholder.sol";
 
 contract ContractRegistryFuzz is Test {
-    ContractRegistry registry;
-
-    address owner = address(0x1);
-    address authorizedDeployer = address(0x2);
-    address unauthorizedUser = address(0x3);
-    address contractAddr1 = address(0x100);
-    address contractAddr2 = address(0x200);
-    address contractAddr3 = address(0x300);
-    address contractAddr4 = address(0x400);
+    Registry registry;
+    
+    address admin = address(0x1);
+    address farmer = address(0x2);
+    address processor = address(0x3);
+    address distributor = address(0x4);
+    address retailer = address(0x5);
+    address nonAdmin = address(0x6);
 
     function setUp() public {
-        vm.prank(owner);
-        registry = new ContractRegistry();
-
-        // Add authorized deployer
-        vm.prank(owner);
-        registry.addAuthorizedDeployer(authorizedDeployer);
+        vm.prank(admin);
+        registry = new Registry();
     }
 
-    // ===== BASIC FUNCTIONALITY TESTS =====
+    // ===== PRODUCT REGISTRATION FUZZ TESTS =====
 
     /**
-     * @dev Test contract registration with valid parameters
+     * @dev Fuzz test for product registration with random addresses
      */
-    function testFuzzRegisterContract(
-        string memory contractType,
-        string memory description
-    ) public {
-        vm.assume(bytes(contractType).length > 0);
-        vm.assume(bytes(contractType).length <= 50); // Reasonable limit
-        vm.assume(bytes(description).length <= 200); // Reasonable limit
-
-        vm.prank(authorizedDeployer);
-        bytes32 contractId = registry.registerContract(
-            contractAddr1,
-            contractType,
-            description
-        );
-
-        // Verify contract was registered
-        ContractRegistry.ContractInfo memory info = registry.getContractInfo(
-            contractId
-        );
-        assertEq(info.contractAddress, contractAddr1);
-        assertEq(info.contractType, contractType);
-        assertEq(info.version, 1);
-        assertEq(info.deployer, authorizedDeployer);
-        assertTrue(info.isActive);
-        assertEq(info.description, description);
-        assertTrue(info.deployedAt > 0);
-
-        // Verify mappings were updated
-        assertEq(registry.getLatestContract(contractType), contractAddr1);
-        assertEq(registry.totalRegisteredContracts(), 1);
+    function testFuzzRegisterProduct(address productAddress) public {
+        vm.assume(productAddress != address(0));
+        vm.assume(!registry.isEntityRegistered(productAddress));
+        
+        uint256 initialCount = registry.getTotalProducts();
+        
+        vm.expectEmit(true, false, false, true);
+        emit ProductRegistered(productAddress);
+        
+        registry.registerProduct(productAddress);
+        
+        assertTrue(registry.isEntityRegistered(productAddress));
+        assertEq(registry.getTotalProducts(), initialCount + 1);
+        
+        address[] memory products = registry.getAllProducts();
+        assertEq(products[products.length - 1], productAddress);
     }
 
     /**
-     * @dev Test contract registration access control
+     * @dev Fuzz test for preventing duplicate product registration
      */
-    function testFuzzRegisterContractAccessControl(
-        string memory contractType,
-        string memory description,
-        address caller
-    ) public {
-        vm.assume(bytes(contractType).length > 0);
-        vm.assume(caller != owner && caller != authorizedDeployer);
-
-        vm.expectRevert("Not authorized deployer");
-        vm.prank(caller);
-        registry.registerContract(contractAddr1, contractType, description);
+    function testFuzzPreventDuplicateProductRegistration(address productAddress) public {
+        vm.assume(productAddress != address(0));
+        
+        registry.registerProduct(productAddress);
+        
+        vm.expectRevert("Product already registered");
+        registry.registerProduct(productAddress);
     }
 
     /**
-     * @dev Test contract registration with invalid parameters
+     * @dev Fuzz test for multiple product registrations
      */
-    function testFuzzRegisterContractInvalidParams(
-        string memory description
-    ) public {
-        vm.assume(bytes(description).length <= 200);
-
-        // Test invalid contract address
-        vm.expectRevert("Invalid contract address");
-        vm.prank(authorizedDeployer);
-        registry.registerContract(address(0), "TestType", description);
-
-        // Test empty contract type
-        vm.expectRevert("Contract type required");
-        vm.prank(authorizedDeployer);
-        registry.registerContract(contractAddr1, "", description);
-    }
-
-    /**
-     * @dev Test contract versioning
-     */
-    function testFuzzContractVersioning(
-        string memory contractType,
-        string memory description1,
-        string memory description2,
-        string memory description3
-    ) public {
-        vm.assume(
-            bytes(contractType).length > 0 && bytes(contractType).length <= 50
-        );
-        vm.assume(bytes(description1).length <= 200);
-        vm.assume(bytes(description2).length <= 200);
-        vm.assume(bytes(description3).length <= 200);
-
-        // Register first version
-        vm.prank(authorizedDeployer);
-        bytes32 contractId1 = registry.registerContract(
-            contractAddr1,
-            contractType,
-            description1
-        );
-
-        // Register second version
-        vm.prank(authorizedDeployer);
-        bytes32 contractId2 = registry.registerContract(
-            contractAddr2,
-            contractType,
-            description2
-        );
-
-        // Register third version
-        vm.prank(authorizedDeployer);
-        bytes32 contractId3 = registry.registerContract(
-            contractAddr3,
-            contractType,
-            description3
-        );
-
-        // Verify versions
-        ContractRegistry.ContractInfo memory info1 = registry.getContractInfo(
-            contractId1
-        );
-        ContractRegistry.ContractInfo memory info2 = registry.getContractInfo(
-            contractId2
-        );
-        ContractRegistry.ContractInfo memory info3 = registry.getContractInfo(
-            contractId3
-        );
-
-        assertEq(info1.version, 1);
-        assertEq(info2.version, 2);
-        assertEq(info3.version, 3);
-
-        // Latest should be version 3
-        assertEq(registry.getLatestContract(contractType), contractAddr3);
-
-        // Check version count
-        assertEq(registry.getContractVersionCount(contractType), 3);
-
-        // Check all versions array
-        bytes32[] memory versions = registry.getContractVersions(contractType);
-        assertEq(versions.length, 3);
-        assertEq(versions[0], contractId1);
-        assertEq(versions[1], contractId2);
-        assertEq(versions[2], contractId3);
-
-        // Check contracts by type
-        address[] memory contracts = registry.getContractsByType(contractType);
-        assertEq(contracts.length, 3);
-        assertEq(contracts[0], contractAddr1);
-        assertEq(contracts[1], contractAddr2);
-        assertEq(contracts[2], contractAddr3);
-    }
-
-    /**
-     * @dev Test system registration
-     */
-    function testFuzzRegisterSystem(uint256 systemId) public {
-        vm.assume(systemId > 0 && systemId < type(uint128).max); // Reasonable range
-
-        vm.prank(authorizedDeployer);
-        registry.registerSystem(
-            systemId,
-            contractAddr1, // stakeholderRegistry
-            contractAddr2, // productRegistry
-            contractAddr3, // shipmentRegistry
-            contractAddr4 // publicVerification
-        );
-
-        // Verify system was registered
-        (
-            bool isActive,
-            string[] memory contractTypes,
-            address[] memory contractAddresses
-        ) = registry.getSystemInfo(systemId);
-
-        assertTrue(isActive);
-        assertEq(contractTypes.length, 4);
-        assertEq(contractAddresses.length, 4);
-
-        // Check individual contract addresses
-        assertEq(
-            registry.getSystemContract(systemId, "StakeholderRegistry"),
-            contractAddr1
-        );
-        assertEq(
-            registry.getSystemContract(systemId, "ProductRegistry"),
-            contractAddr2
-        );
-        assertEq(
-            registry.getSystemContract(systemId, "ShipmentRegistry"),
-            contractAddr3
-        );
-        assertEq(
-            registry.getSystemContract(systemId, "PublicVerification"),
-            contractAddr4
-        );
-    }
-
-    /**
-     * @dev Test system registration access control
-     */
-    function testFuzzRegisterSystemAccessControl(
-        uint256 systemId,
-        address caller
-    ) public {
-        vm.assume(systemId > 0);
-        vm.assume(caller != owner && caller != authorizedDeployer);
-
-        vm.expectRevert("Not authorized deployer");
-        vm.prank(caller);
-        registry.registerSystem(
-            systemId,
-            contractAddr1,
-            contractAddr2,
-            contractAddr3,
-            contractAddr4
-        );
-    }
-
-    /**
-     * @dev Test contract upgrade functionality
-     */
-    function testFuzzUpgradeContract(
-        string memory contractType,
-        string memory description1,
-        string memory description2
-    ) public {
-        vm.assume(
-            bytes(contractType).length > 0 && bytes(contractType).length <= 50
-        );
-        vm.assume(bytes(description1).length <= 200);
-        vm.assume(bytes(description2).length <= 200);
-
-        // Register initial contract
-        vm.prank(authorizedDeployer);
-        bytes32 contractId1 = registry.registerContract(
-            contractAddr1,
-            contractType,
-            description1
-        );
-
-        ContractRegistry.ContractInfo memory initialInfo = registry
-            .getContractInfo(contractId1);
-        assertEq(initialInfo.version, 1);
-        assertEq(registry.getLatestContract(contractType), contractAddr1);
-
-        // Upgrade contract
-        vm.prank(authorizedDeployer);
-        registry.upgradeContract(contractType, contractAddr2, description2);
-
-        // Verify upgrade
-        assertEq(registry.getLatestContract(contractType), contractAddr2);
-        assertEq(registry.getContractVersionCount(contractType), 2);
-
-        // Check that both versions exist
-        bytes32[] memory versions = registry.getContractVersions(contractType);
-        assertEq(versions.length, 2);
-    }
-
-    /**
-     * @dev Test upgrade contract with non-existent type
-     */
-    function testFuzzUpgradeNonExistentContract(
-        string memory contractType,
-        string memory description
-    ) public {
-        vm.assume(
-            bytes(contractType).length > 0 && bytes(contractType).length <= 50
-        );
-        vm.assume(bytes(description).length <= 200);
-
-        // Try to upgrade a contract type that doesn't exist
-        vm.expectRevert("Contract type not found");
-        vm.prank(authorizedDeployer);
-        registry.upgradeContract(contractType, contractAddr1, description);
-    }
-
-    /**
-     * @dev Test contract deactivation
-     */
-    function testFuzzDeactivateContract(
-        string memory contractType,
-        string memory description,
-        string memory reason
-    ) public {
-        vm.assume(
-            bytes(contractType).length > 0 && bytes(contractType).length <= 50
-        );
-        vm.assume(bytes(description).length <= 200);
-        vm.assume(bytes(reason).length <= 100);
-
-        // Register a contract
-        vm.prank(authorizedDeployer);
-        bytes32 contractId = registry.registerContract(
-            contractAddr1,
-            contractType,
-            description
-        );
-
-        // Verify it's active
-        ContractRegistry.ContractInfo memory info = registry.getContractInfo(
-            contractId
-        );
-        assertTrue(info.isActive);
-
-        // Deactivate it
-        vm.prank(authorizedDeployer);
-        registry.deactivateContract(contractId, reason);
-
-        // Verify it's deactivated
-        info = registry.getContractInfo(contractId);
-        assertFalse(info.isActive);
-    }
-
-    /**
-     * @dev Test deactivate non-existent contract
-     */
-    function testFuzzDeactivateNonExistentContract(
-        bytes32 contractId,
-        string memory reason
-    ) public {
-        vm.assume(contractId != bytes32(0));
-        vm.assume(bytes(reason).length <= 100);
-
-        vm.expectRevert("Contract not found");
-        vm.prank(authorizedDeployer);
-        registry.deactivateContract(contractId, reason);
-    }
-
-    /**
-     * @dev Test authorized deployer management
-     */
-    function testFuzzAuthorizedDeployerManagement(address newDeployer) public {
-        vm.assume(newDeployer != address(0));
-        vm.assume(newDeployer != owner);
-        vm.assume(newDeployer != authorizedDeployer);
-
-        // Initially not authorized
-        assertFalse(registry.authorizedDeployers(newDeployer));
-
-        // Add as authorized deployer
-        vm.prank(owner);
-        registry.addAuthorizedDeployer(newDeployer);
-
-        // Now should be authorized
-        assertTrue(registry.authorizedDeployers(newDeployer));
-
-        // Remove authorization
-        vm.prank(owner);
-        registry.removeAuthorizedDeployer(newDeployer);
-
-        // Should no longer be authorized
-        assertFalse(registry.authorizedDeployers(newDeployer));
-    }
-
-    /**
-     * @dev Test deployer management access control
-     */
-    function testFuzzDeployerManagementAccessControl(
-        address newDeployer,
-        address caller
-    ) public {
-        vm.assume(newDeployer != address(0));
-        vm.assume(caller != owner);
-
-        // Non-owner should not be able to add deployers
-        vm.expectRevert("Only registry owner");
-        vm.prank(caller);
-        registry.addAuthorizedDeployer(newDeployer);
-
-        // Add deployer as owner first
-        vm.prank(owner);
-        registry.addAuthorizedDeployer(newDeployer);
-
-        // Non-owner should not be able to remove deployers
-        vm.expectRevert("Only registry owner");
-        vm.prank(caller);
-        registry.removeAuthorizedDeployer(newDeployer);
-    }
-
-    /**
-     * @dev Test ownership transfer
-     */
-    function testFuzzOwnershipTransfer(address newOwner) public {
-        vm.assume(newOwner != address(0));
-        vm.assume(newOwner != owner);
-
-        // Transfer ownership
-        vm.prank(owner);
-        registry.transferOwnership(newOwner);
-
-        // Verify new owner
-        assertEq(registry.registryOwner(), newOwner);
-
-        // Old owner should no longer have access
-        vm.expectRevert("Only registry owner");
-        vm.prank(owner);
-        registry.addAuthorizedDeployer(address(0x999));
-
-        // New owner should have access
-        vm.prank(newOwner);
-        registry.addAuthorizedDeployer(address(0x999));
-        assertTrue(registry.authorizedDeployers(address(0x999)));
-    }
-
-    /**
-     * @dev Test ownership transfer with invalid address
-     */
-    function testFuzzOwnershipTransferInvalid() public {
-        vm.expectRevert("Invalid new owner");
-        vm.prank(owner);
-        registry.transferOwnership(address(0));
-    }
-
-    /**
-     * @dev Test ownership transfer access control
-     */
-    function testFuzzOwnershipTransferAccessControl(
-        address newOwner,
-        address caller
-    ) public {
-        vm.assume(newOwner != address(0));
-        vm.assume(caller != owner);
-
-        vm.expectRevert("Only registry owner");
-        vm.prank(caller);
-        registry.transferOwnership(newOwner);
-    }
-
-    /**
-     * @dev Test get latest contract for non-existent type
-     */
-    function testFuzzGetLatestContractNonExistent(
-        string memory contractType
-    ) public {
-        vm.assume(bytes(contractType).length > 0);
-
-        vm.expectRevert("Contract type not found");
-        registry.getLatestContract(contractType);
-    }
-
-    /**
-     * @dev Test get system contract for non-existent system
-     */
-    function testFuzzGetSystemContractNonExistent(
-        uint256 systemId,
-        string memory contractType
-    ) public {
-        vm.assume(systemId > 0);
-        vm.assume(bytes(contractType).length > 0);
-
-        // Should return zero address for non-existent system
-        assertEq(
-            registry.getSystemContract(systemId, contractType),
-            address(0)
-        );
-    }
-
-    /**
-     * @dev Test supported contract types
-     */
-    function testFuzzSupportedContractTypes() public {
-        string[] memory supportedTypes = registry.getSupportedContractTypes();
-
-        // Should have 6 supported types by default
-        assertEq(supportedTypes.length, 6);
-
-        // Check for expected types
-        bool foundStakeholder = false;
-        bool foundProduct = false;
-        bool foundShipment = false;
-        bool foundVerification = false;
-        bool foundProductFactory = false;
-        bool foundShipmentFactory = false;
-
-        for (uint i = 0; i < supportedTypes.length; i++) {
-            if (
-                keccak256(bytes(supportedTypes[i])) ==
-                keccak256(bytes("StakeholderRegistry"))
-            ) {
-                foundStakeholder = true;
-            } else if (
-                keccak256(bytes(supportedTypes[i])) ==
-                keccak256(bytes("ProductRegistry"))
-            ) {
-                foundProduct = true;
-            } else if (
-                keccak256(bytes(supportedTypes[i])) ==
-                keccak256(bytes("ShipmentRegistry"))
-            ) {
-                foundShipment = true;
-            } else if (
-                keccak256(bytes(supportedTypes[i])) ==
-                keccak256(bytes("PublicVerification"))
-            ) {
-                foundVerification = true;
-            } else if (
-                keccak256(bytes(supportedTypes[i])) ==
-                keccak256(bytes("ProductFactory"))
-            ) {
-                foundProductFactory = true;
-            } else if (
-                keccak256(bytes(supportedTypes[i])) ==
-                keccak256(bytes("ShipmentFactory"))
-            ) {
-                foundShipmentFactory = true;
+    function testFuzzMultipleProductRegistrations(address[10] memory productAddresses) public {
+        uint256 expectedCount = 0;
+        
+        for (uint256 i = 0; i < productAddresses.length; i++) {
+            vm.assume(productAddresses[i] != address(0));
+            
+            // Skip if already registered (to handle duplicate addresses in array)
+            if (!registry.isEntityRegistered(productAddresses[i])) {
+                registry.registerProduct(productAddresses[i]);
+                expectedCount++;
+                
+                assertTrue(registry.isEntityRegistered(productAddresses[i]));
             }
         }
+        
+        assertEq(registry.getTotalProducts(), expectedCount);
+    }
 
-        assertTrue(foundStakeholder);
-        assertTrue(foundProduct);
-        assertTrue(foundShipment);
-        assertTrue(foundVerification);
-        assertTrue(foundProductFactory);
-        assertTrue(foundShipmentFactory);
+    // ===== SHIPMENT REGISTRATION FUZZ TESTS =====
+
+    /**
+     * @dev Fuzz test for shipment registration
+     */
+    function testFuzzRegisterShipment(
+        address shipmentAddress,
+        string memory trackingNumber,
+        address productAddress,
+        address sender,
+        address receiver
+    ) public {
+        vm.assume(shipmentAddress != address(0));
+        vm.assume(productAddress != address(0));
+        vm.assume(sender != address(0));
+        vm.assume(receiver != address(0));
+        vm.assume(bytes(trackingNumber).length > 0);
+        vm.assume(bytes(trackingNumber).length <= 100); // Reasonable limit
+        vm.assume(!registry.isEntityRegistered(shipmentAddress));
+        
+        uint256 initialCount = registry.getTotalShipments();
+        
+        vm.expectEmit(true, true, true, true);
+        emit ShipmentRegistered(shipmentAddress, trackingNumber, productAddress, sender, receiver);
+        
+        registry.registerShipment(shipmentAddress, trackingNumber, productAddress, sender, receiver);
+        
+        assertTrue(registry.isEntityRegistered(shipmentAddress));
+        assertEq(registry.getTotalShipments(), initialCount + 1);
+        
+        address[] memory shipments = registry.getAllShipments();
+        assertEq(shipments[shipments.length - 1], shipmentAddress);
     }
 
     /**
-     * @dev Test contract activity check
+     * @dev Fuzz test for preventing duplicate shipment registration
      */
-    function testFuzzIsContractActive(string memory contractType) public {
-        string memory description = "Valid ASCII description";
-        vm.assume(
-            bytes(contractType).length > 0 && bytes(contractType).length <= 10
+    function testFuzzPreventDuplicateShipmentRegistration(
+        address shipmentAddress,
+        string memory trackingNumber,
+        address productAddress,
+        address sender,
+        address receiver
+    ) public {
+        vm.assume(shipmentAddress != address(0));
+        vm.assume(productAddress != address(0));
+        vm.assume(sender != address(0));
+        vm.assume(receiver != address(0));
+        vm.assume(bytes(trackingNumber).length > 0);
+        
+        registry.registerShipment(shipmentAddress, trackingNumber, productAddress, sender, receiver);
+        
+        vm.expectRevert("Shipment already registered");
+        registry.registerShipment(shipmentAddress, trackingNumber, productAddress, sender, receiver);
+    }
+
+    /**
+     * @dev Fuzz test for shipment registration with extreme string lengths
+     */
+    function testFuzzShipmentRegistrationStringLimits(
+        address shipmentAddress,
+        address productAddress,
+        address sender,
+        address receiver,
+        uint8 stringLength
+    ) public {
+        vm.assume(shipmentAddress != address(0));
+        vm.assume(productAddress != address(0));
+        vm.assume(sender != address(0));
+        vm.assume(receiver != address(0));
+        vm.assume(stringLength > 0);
+        vm.assume(stringLength <= 200); // Gas limit consideration
+        vm.assume(!registry.isEntityRegistered(shipmentAddress));
+        
+        string memory trackingNumber = _generateString(stringLength);
+        
+        registry.registerShipment(shipmentAddress, trackingNumber, productAddress, sender, receiver);
+        
+        assertTrue(registry.isEntityRegistered(shipmentAddress));
+    }
+
+    // ===== STAKEHOLDER REGISTRATION FUZZ TESTS =====
+
+    /**
+     * @dev Fuzz test for stakeholder registration
+     */
+    function testFuzzRegisterStakeholder(
+        address stakeholderContract,
+        string memory businessLicense,
+        address stakeholderAddress,
+        uint8 roleIndex
+    ) public {
+        vm.assume(stakeholderContract != address(0));
+        vm.assume(stakeholderAddress != address(0));
+        vm.assume(bytes(businessLicense).length > 0);
+        vm.assume(bytes(businessLicense).length <= 100);
+        vm.assume(roleIndex < 4); // 0-3 for FARMER, PROCESSOR, RETAILER, DISTRIBUTOR
+        vm.assume(!registry.isEntityRegistered(stakeholderContract));
+        vm.assume(registry.getStakeholderByLicense(businessLicense) == address(0));
+        vm.assume(registry.getStakeholderByWallet(stakeholderAddress) == address(0));
+        
+        Stakeholder.StakeholderRole role = Stakeholder.StakeholderRole(roleIndex);
+        
+        vm.expectEmit(true, true, true, true);
+        emit StakeholderRegistered(stakeholderContract, businessLicense, stakeholderAddress, role);
+        
+        registry.registerStakeholder(stakeholderContract, businessLicense, stakeholderAddress, role);
+        
+        assertTrue(registry.isEntityRegistered(stakeholderContract));
+        assertEq(registry.getStakeholderByLicense(businessLicense), stakeholderContract);
+        assertEq(registry.getStakeholderByWallet(stakeholderAddress), stakeholderContract);
+        
+        address[] memory stakeholdersByRole = registry.getStakeholdersByRole(role);
+        bool found = false;
+        for (uint256 i = 0; i < stakeholdersByRole.length; i++) {
+            if (stakeholdersByRole[i] == stakeholderContract) {
+                found = true;
+                break;
+            }
+        }
+        assertTrue(found);
+    }
+
+    /**
+     * @dev Fuzz test for preventing duplicate stakeholder contract registration
+     */
+    function testFuzzPreventDuplicateStakeholderContract(
+        address stakeholderContract,
+        string memory businessLicense1,
+        string memory businessLicense2,
+        address stakeholderAddress1,
+        address stakeholderAddress2,
+        uint8 role1,
+        uint8 role2
+    ) public {
+        vm.assume(stakeholderContract != address(0));
+        vm.assume(stakeholderAddress1 != address(0));
+        vm.assume(stakeholderAddress2 != address(0));
+        vm.assume(bytes(businessLicense1).length > 0);
+        vm.assume(bytes(businessLicense2).length > 0);
+        vm.assume(role1 < 4 && role2 < 4);
+        vm.assume(!_stringEquals(businessLicense1, businessLicense2));
+        vm.assume(stakeholderAddress1 != stakeholderAddress2);
+        
+        registry.registerStakeholder(
+            stakeholderContract, 
+            businessLicense1, 
+            stakeholderAddress1, 
+            Stakeholder.StakeholderRole(role1)
         );
-        for (uint i = 0; i < bytes(contractType).length; i++) {
-            vm.assume(
-                uint8(bytes(contractType)[i]) >= 0x20 &&
-                    uint8(bytes(contractType)[i]) <= 0x7E
+        
+        vm.expectRevert("Stakeholder already registered");
+        registry.registerStakeholder(
+            stakeholderContract, 
+            businessLicense2, 
+            stakeholderAddress2, 
+            Stakeholder.StakeholderRole(role2)
+        );
+    }
+
+    /**
+     * @dev Fuzz test for preventing duplicate business license
+     */
+    function testFuzzPreventDuplicateBusinessLicense(
+        address stakeholderContract1,
+        address stakeholderContract2,
+        string memory businessLicense,
+        address stakeholderAddress1,
+        address stakeholderAddress2,
+        uint8 role1,
+        uint8 role2
+    ) public {
+        vm.assume(stakeholderContract1 != address(0));
+        vm.assume(stakeholderContract2 != address(0));
+        vm.assume(stakeholderContract1 != stakeholderContract2);
+        vm.assume(stakeholderAddress1 != address(0));
+        vm.assume(stakeholderAddress2 != address(0));
+        vm.assume(stakeholderAddress1 != stakeholderAddress2);
+        vm.assume(bytes(businessLicense).length > 0);
+        vm.assume(role1 < 4 && role2 < 4);
+        
+        registry.registerStakeholder(
+            stakeholderContract1, 
+            businessLicense, 
+            stakeholderAddress1, 
+            Stakeholder.StakeholderRole(role1)
+        );
+        
+        vm.expectRevert("Business license already registered");
+        registry.registerStakeholder(
+            stakeholderContract2, 
+            businessLicense, 
+            stakeholderAddress2, 
+            Stakeholder.StakeholderRole(role2)
+        );
+    }
+
+    /**
+     * @dev Fuzz test for preventing duplicate stakeholder address
+     */
+    function testFuzzPreventDuplicateStakeholderAddress(
+        address stakeholderContract1,
+        address stakeholderContract2,
+        string memory businessLicense1,
+        string memory businessLicense2,
+        address stakeholderAddress,
+        uint8 role1,
+        uint8 role2
+    ) public {
+        vm.assume(stakeholderContract1 != address(0));
+        vm.assume(stakeholderContract2 != address(0));
+        vm.assume(stakeholderContract1 != stakeholderContract2);
+        vm.assume(stakeholderAddress != address(0));
+        vm.assume(bytes(businessLicense1).length > 0);
+        vm.assume(bytes(businessLicense2).length > 0);
+        vm.assume(!_stringEquals(businessLicense1, businessLicense2));
+        vm.assume(role1 < 4 && role2 < 4);
+        
+        registry.registerStakeholder(
+            stakeholderContract1, 
+            businessLicense1, 
+            stakeholderAddress, 
+            Stakeholder.StakeholderRole(role1)
+        );
+        
+        vm.expectRevert("Stakeholder address already has a contract");
+        registry.registerStakeholder(
+            stakeholderContract2, 
+            businessLicense2, 
+            stakeholderAddress, 
+            Stakeholder.StakeholderRole(role2)
+        );
+    }
+
+    // ===== ROLE DISTRIBUTION FUZZ TESTS =====
+
+    /**
+     * @dev Fuzz test for stakeholder role distribution
+     */
+    function testFuzzStakeholderRoleDistribution(
+        uint8 stakeholderCount,
+        uint256 seed
+    ) public {
+        vm.assume(stakeholderCount > 0 && stakeholderCount <= 10); // Reduced array size
+        vm.assume(seed < type(uint256).max / 10000); // Prevent overflow
+        
+        uint256[4] memory roleCounts;
+        
+        for (uint256 i = 0; i < stakeholderCount; i++) {
+            address stakeholderContract = address(uint160(seed + i + 1000));
+            string memory businessLicense = string(abi.encodePacked("LICENSE", vm.toString(i)));
+            address stakeholderAddress = address(uint160(seed + i + 2000));
+            uint8 roleIndex = uint8(i % 4);
+            
+            Stakeholder.StakeholderRole role = Stakeholder.StakeholderRole(roleIndex);
+            
+            registry.registerStakeholder(
+                stakeholderContract,
+                businessLicense,
+                stakeholderAddress,
+                role
             );
+            
+            roleCounts[roleIndex]++;
         }
-        try
-            registry.registerContract(contractAddr1, contractType, description)
-        {
-            assertTrue(registry.isContractActive(contractAddr1));
-        } catch {
-            emit log_string("Registration failed for contractType:");
-            emit log_string(contractType);
+        
+        // Verify role distribution
+        for (uint256 i = 0; i < 4; i++) {
+            address[] memory roleStakeholders = registry.getStakeholdersByRole(Stakeholder.StakeholderRole(i));
+            assertEq(roleStakeholders.length, roleCounts[i]);
         }
     }
 
+    // ===== QUERY FUNCTION FUZZ TESTS =====
+
     /**
-     * @dev Test registry statistics
+     * @dev Fuzz test for querying non-existent entities
      */
-    function testFuzzRegistryStats(
-        string memory contractType1,
-        string memory contractType2,
-        string memory description
+    function testFuzzQueryNonExistentEntities(
+        address randomAddress,
+        string memory randomLicense
     ) public {
-        vm.assume(
-            bytes(contractType1).length > 0 && bytes(contractType1).length <= 50
-        );
-        vm.assume(
-            bytes(contractType2).length > 0 && bytes(contractType2).length <= 50
-        );
-        vm.assume(
-            keccak256(bytes(contractType1)) != keccak256(bytes(contractType2))
-        );
-        vm.assume(bytes(description).length <= 200);
-
-        // Check initial stats
-        (
-            uint256 totalContracts,
-            uint256 totalSystems,
-            uint256 totalContractTypes
-        ) = registry.getRegistryStats();
-        assertEq(totalContracts, 0);
-        assertEq(totalSystems, 0); // Implementation returns 0
-        assertEq(totalContractTypes, 6); // Default supported types
-
-        // Register some contracts
-        vm.prank(authorizedDeployer);
-        registry.registerContract(contractAddr1, contractType1, description);
-
-        vm.prank(authorizedDeployer);
-        registry.registerContract(contractAddr2, contractType2, description);
-
-        // Check updated stats
-        (totalContracts, totalSystems, totalContractTypes) = registry
-            .getRegistryStats();
-        assertEq(totalContracts, 2);
-        assertEq(totalSystems, 0); // Implementation returns 0
-        assertEq(totalContractTypes, 6);
+        vm.assume(randomAddress != address(0));
+        vm.assume(bytes(randomLicense).length > 0);
+        vm.assume(!registry.isEntityRegistered(randomAddress));
+        vm.assume(registry.getStakeholderByLicense(randomLicense) == address(0));
+        
+        assertFalse(registry.isEntityRegistered(randomAddress));
+        assertEq(registry.getStakeholderByLicense(randomLicense), address(0));
+        assertEq(registry.getStakeholderByWallet(randomAddress), address(0));
     }
 
     /**
-     * @dev Test edge cases with empty strings and boundary values
+     * @dev Fuzz test for array bounds and consistency
      */
-    function testFuzzEdgeCases() public {
-        // Test with maximum reasonable string lengths
-        string
-            memory longType = "StakeholderRegistryWithVeryLongNameThatShouldStillWork";
-        string
-            memory longDescription = "This is a very long description that should still work within reasonable bounds and not cause any issues with the contract registry system";
-
-        vm.prank(authorizedDeployer);
-        bytes32 contractId = registry.registerContract(
-            contractAddr1,
-            longType,
-            longDescription
-        );
-
-        ContractRegistry.ContractInfo memory info = registry.getContractInfo(
-            contractId
-        );
-        assertEq(info.contractType, longType);
-        assertEq(info.description, longDescription);
-    }
-
-    /**
-     * @dev Test multiple contract types and complex scenarios
-     */
-    function testFuzzComplexScenarios(
-        uint256 systemId1,
-        uint256 systemId2,
-        string memory customType
+    function testFuzzArrayConsistency(
+        address[5] memory products,
+        address[5] memory shipments,
+        address[5] memory stakeholderContracts,
+        string[5] memory businessLicenses,
+        address[5] memory stakeholderAddresses
     ) public {
-        vm.assume(systemId1 > 0 && systemId1 < type(uint128).max);
-        vm.assume(systemId2 > 0 && systemId2 < type(uint128).max);
-        vm.assume(systemId1 != systemId2);
-        vm.assume(
-            bytes(customType).length > 0 && bytes(customType).length <= 50
-        );
+        uint256 productCount = 0;
+        uint256 shipmentCount = 0;
+        uint256 stakeholderCount = 0;
+        
+        // Register products
+        for (uint256 i = 0; i < products.length; i++) {
+            if (products[i] != address(0) && !registry.isEntityRegistered(products[i])) {
+                registry.registerProduct(products[i]);
+                productCount++;
+            }
+        }
+        
+        // Register shipments
+        for (uint256 i = 0; i < shipments.length; i++) {
+            if (shipments[i] != address(0) && !registry.isEntityRegistered(shipments[i])) {
+                registry.registerShipment(
+                    shipments[i],
+                    string(abi.encodePacked("TRACK", vm.toString(i))),
+                    address(uint160(i + 100)), // Dummy product address
+                    address(uint160(i + 200)), // Dummy sender
+                    address(uint160(i + 300))  // Dummy receiver
+                );
+                shipmentCount++;
+            }
+        }
+        
+        // Register stakeholders
+        for (uint256 i = 0; i < stakeholderContracts.length; i++) {
+            if (stakeholderContracts[i] != address(0) &&
+                stakeholderAddresses[i] != address(0) &&
+                bytes(businessLicenses[i]).length > 0 &&
+                !registry.isEntityRegistered(stakeholderContracts[i]) &&
+                registry.getStakeholderByLicense(businessLicenses[i]) == address(0) &&
+                registry.getStakeholderByWallet(stakeholderAddresses[i]) == address(0)) {
+                
+                registry.registerStakeholder(
+                    stakeholderContracts[i],
+                    businessLicenses[i],
+                    stakeholderAddresses[i],
+                    Stakeholder.StakeholderRole(i % 4)
+                );
+                stakeholderCount++;
+            }
+        }
+        
+        // Verify counts
+        assertEq(registry.getTotalProducts(), productCount);
+        assertEq(registry.getTotalShipments(), shipmentCount);
+        assertEq(registry.getAllProducts().length, productCount);
+        assertEq(registry.getAllShipments().length, shipmentCount);
+        assertEq(registry.getAllStakeholders().length, stakeholderCount);
+    }
 
-        // Register standard system
-        vm.prank(authorizedDeployer);
-        registry.registerSystem(
-            systemId1,
-            contractAddr1,
-            contractAddr2,
-            contractAddr3,
-            contractAddr4
-        );
+    // ===== EDGE CASE FUZZ TESTS =====
 
-        // Register custom contract type
-        address customAddr = address(0x500);
-        vm.prank(authorizedDeployer);
-        registry.registerContract(customAddr, customType, "Custom contract");
-
-        // Register another system
-        vm.prank(authorizedDeployer);
-        registry.registerSystem(
-            systemId2,
-            address(0x600),
-            address(0x700),
-            address(0x800),
-            address(0x900)
-        );
-
-        // Verify both systems exist independently
-        (bool isActive1, , ) = registry.getSystemInfo(systemId1);
-        (bool isActive2, , ) = registry.getSystemInfo(systemId2);
-
-        assertTrue(isActive1);
-        assertTrue(isActive2);
-
-        // Verify custom contract exists
-        assertEq(registry.getLatestContract(customType), customAddr);
-
-        // Verify total count includes all registrations
-        assertEq(registry.totalRegisteredContracts(), 1); // Only explicit registerContract calls count
+    /**
+     * @dev Fuzz test with address(0) inputs
+     */
+    function testFuzzZeroAddressHandling(string memory businessLicense) public {
+        vm.assume(bytes(businessLicense).length > 0);
+        
+        // Test product registration with address(0) - should succeed in Registry contract
+        // as it only checks for duplicates, not zero addresses
+        registry.registerProduct(address(0));
+        assertTrue(registry.isEntityRegistered(address(0)));
     }
 
     /**
-     * @dev Test contract info retrieval with various data
+     * @dev Fuzz test with empty string inputs
      */
-    function testFuzzContractInfoRetrieval(
-        string memory contractType,
-        string memory description,
-        uint256 timeWarp
+    function testFuzzEmptyStringHandling(
+        address stakeholderContract,
+        address stakeholderAddress
     ) public {
-        vm.assume(bytes(contractType).length > 0);
-        vm.assume(bytes(description).length > 0);
-        vm.assume(timeWarp > 0 && timeWarp < 365 days);
-
-        // Warp time to test timestamp
-        vm.warp(block.timestamp + timeWarp);
-
-        vm.prank(authorizedDeployer);
-        bytes32 contractId = registry.registerContract(
-            contractAddr1,
-            contractType,
-            description
+        vm.assume(stakeholderContract != address(0));
+        vm.assume(stakeholderAddress != address(0));
+        
+        // Empty business license should be handled gracefully
+        registry.registerStakeholder(
+            stakeholderContract,
+            "",
+            stakeholderAddress,
+            Stakeholder.StakeholderRole.FARMER
         );
-
-        ContractRegistry.ContractInfo memory info = registry.getContractInfo(
-            contractId
-        );
-
-        // Verify all fields are correctly set
-        assertEq(info.contractAddress, contractAddr1);
-        assertEq(info.contractType, contractType);
-        assertEq(info.version, 1);
-        assertEq(info.deployer, authorizedDeployer);
-        assertEq(info.deployedAt, block.timestamp);
-        assertTrue(info.isActive);
-        assertEq(info.description, description);
+        
+        assertEq(registry.getStakeholderByLicense(""), stakeholderContract);
     }
 
-    function testRegisterContractRevertsOnZeroAddress() public {
-        vm.expectRevert("Invalid contract address");
-        vm.prank(authorizedDeployer);
-        registry.registerContract(address(0), "TestType", "desc");
+    /**
+     * @dev Fuzz test for gas consumption with large arrays
+     */
+    function testFuzzGasConsumption(uint8 itemCount) public {
+        vm.assume(itemCount > 0 && itemCount <= 50); // Reasonable gas limit
+        
+        uint256 gasStart = gasleft();
+        
+        for (uint256 i = 0; i < itemCount; i++) {
+            address productAddr = address(uint160(i + 1000));
+            registry.registerProduct(productAddr);
+        }
+        
+        uint256 gasUsed = gasStart - gasleft();
+        
+        // Verify all products were registered
+        assertEq(registry.getTotalProducts(), itemCount);
+        
+        // Gas should scale reasonably with item count
+        assertTrue(gasUsed > 0);
     }
 
-    function testRegisterContractRevertsOnEmptyType() public {
-        vm.expectRevert("Contract type required");
-        vm.prank(authorizedDeployer);
-        registry.registerContract(contractAddr1, "", "desc");
+    // ===== HELPER FUNCTIONS =====
+
+    /**
+     * @dev Generate a string of specified length for testing
+     */
+    function _generateString(uint256 length) internal pure returns (string memory) {
+        bytes memory str = new bytes(length);
+        for (uint256 i = 0; i < length; i++) {
+            str[i] = bytes1(uint8(65 + (i % 26))); // A-Z
+        }
+        return string(str);
     }
 
-    function testUpgradeContractRevertsOnZeroAddress() public {
-        vm.expectRevert("Contract type not found");
-        vm.prank(authorizedDeployer);
-        registry.upgradeContract("TestType", address(0), "desc");
+    /**
+     * @dev Compare two strings for equality
+     */
+    function _stringEquals(string memory a, string memory b) internal pure returns (bool) {
+        return keccak256(abi.encodePacked(a)) == keccak256(abi.encodePacked(b));
     }
 
-    function testUpgradeContractRevertsOnEmptyType() public {
-        vm.expectRevert("Contract type not found");
-        vm.prank(authorizedDeployer);
-        registry.upgradeContract("", contractAddr1, "desc");
-    }
-
-    function testUpgradeContractOnlyAuthorized() public {
-        address notAuth = address(0x999);
-        vm.expectRevert("Not authorized deployer");
-        vm.prank(notAuth);
-        registry.upgradeContract("TestType", contractAddr1, "desc");
-    }
-
-    function testDeactivateContractRevertsOnNotFound() public {
-        vm.expectRevert("Contract not found");
-        vm.prank(authorizedDeployer);
-        registry.deactivateContract(bytes32(uint256(0x123)), "reason");
-    }
-
-    function testDeactivateContractOnlyAuthorized() public {
-        // Register a contract
-        vm.prank(authorizedDeployer);
-        bytes32 contractId = registry.registerContract(
-            contractAddr1,
-            "TestType",
-            "desc"
-        );
-        // Try to deactivate as unauthorized
-        address notAuth = address(0x999);
-        vm.expectRevert("Not authorized deployer");
-        vm.prank(notAuth);
-        registry.deactivateContract(contractId, "reason");
-    }
-
-    function testAddAuthorizedDeployerOnlyOwner() public {
-        address notOwner = address(0x999);
-        vm.expectRevert("Only registry owner");
-        vm.prank(notOwner);
-        registry.addAuthorizedDeployer(address(0x888));
-    }
-
-    function testRemoveAuthorizedDeployerOnlyOwner() public {
-        address notOwner = address(0x999);
-        vm.expectRevert("Only registry owner");
-        vm.prank(notOwner);
-        registry.removeAuthorizedDeployer(address(0x888));
-    }
-
-    function testTransferOwnershipOnlyOwner() public {
-        address notOwner = address(0x999);
-        vm.expectRevert("Only registry owner");
-        vm.prank(notOwner);
-        registry.transferOwnership(address(0x888));
-    }
-
-    function testTransferOwnershipRevertsOnZero() public {
-        vm.expectRevert("Invalid new owner");
-        vm.prank(owner);
-        registry.transferOwnership(address(0));
-    }
-
-    function testGetLatestContractRevertsIfNotFound() public {
-        vm.expectRevert("Contract type not found");
-        registry.getLatestContract("NonExistentType");
-    }
-
-    function testIsContractActiveReturnsFalseForUnknown() public {
-        assertFalse(registry.isContractActive(address(0xDEAD)));
-    }
-
-    function testGetSystemInfoReturnsEmptyForUnknown() public {
-        (
-            bool isActive,
-            string[] memory contractTypes,
-            address[] memory contractAddresses
-        ) = registry.getSystemInfo(999999);
-        assertFalse(isActive);
-        assertEq(contractTypes.length, 0);
-        assertEq(contractAddresses.length, 0);
-    }
-
-    function testGetContractVersionCountReturnsZeroForUnknown() public {
-        assertEq(registry.getContractVersionCount("NonExistentType"), 0);
-    }
+    // ===== EVENTS =====
+    
+    event ProductRegistered(address indexed _product);
+    event ShipmentRegistered(
+        address indexed _shipment,
+        string indexed trackingNumber,
+        address indexed productAddress,
+        address sender,
+        address receiver
+    );
+    event StakeholderRegistered(
+        address indexed _stakeholderContract,
+        string indexed businessLicense,
+        address indexed stakeholderAddress,
+        Stakeholder.StakeholderRole role
+    );
 }
