@@ -16,6 +16,14 @@ module.exports = {
             chainId: 31337,
             allowUnlimitedContractSize: true,
         },
+        // Ethereum Sepolia Testnet
+        sepolia: {
+            url: process.env.SEPOLIA_RPC_URL || "https://sepolia.infura.io/v3/YOUR_INFURA_PROJECT_ID",
+            accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+            chainId: 11155111,
+            blockConfirmations: 6,
+            gasPrice: 20000000000, // 20 gwei
+        },
         // Polygon Amoy Testnet
         polygonAmoy: {
             url: process.env.POLYGON_RPC_URL || "https://rpc-amoy.polygon.technology/",
@@ -62,11 +70,8 @@ module.exports = {
         ],
     },
     etherscan: {
-        apiKey: {
-            polygon: process.env.POLYGONSCAN_API_KEY || "",
-            polygonAmoy: process.env.POLYGONSCAN_API_KEY || "",
-            polygonMumbai: process.env.POLYGONSCAN_API_KEY || "", // Legacy Mumbai support
-        },
+        // Use the new v2 API format with a single API key
+        apiKey: process.env.ETHERSCAN_API_KEY || process.env.POLYGONSCAN_API_KEY || "",
         customChains: [
             {
                 network: "polygonAmoy",
@@ -74,6 +79,14 @@ module.exports = {
                 urls: {
                     apiURL: "https://api-amoy.polygonscan.com/api",
                     browserURL: "https://amoy.polygonscan.com/"
+                }
+            },
+            {
+                network: "sepolia",
+                chainId: 11155111,
+                urls: {
+                    apiURL: "https://api-sepolia.etherscan.io/api",
+                    browserURL: "https://sepolia.etherscan.io/"
                 }
             }
         ]
