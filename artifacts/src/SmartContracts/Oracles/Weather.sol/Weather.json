@@ -1,0 +1,10 @@
+{
+  "_format": "hh-sol-artifact-1",
+  "contractName": "Weather",
+  "sourceName": "src/SmartContracts/Oracles/Weather.sol",
+  "abi": [],
+  "bytecode": "0x60808060405234601757603a9081601d823930815050f35b600080fdfe600080fdfea26469706673582212207e898b7ed58d63a2205f5e407b1a11a9c2ae0cf76e02feb2dd3774043cfb11a964736f6c63430008130033",
+  "deployedBytecode": "0x600080fdfea26469706673582212207e898b7ed58d63a2205f5e407b1a11a9c2ae0cf76e02feb2dd3774043cfb11a964736f6c63430008130033",
+  "linkReferences": {},
+  "deployedLinkReferences": {}
+}
