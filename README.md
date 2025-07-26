@@ -1,4 +1,9 @@
 # Food_agriculture_supply_chain
+npx hardhat run deploy/03-clean-deploy.js --network localhost
+
+npx hardhat deploy --tags clean
+
+node scripts/register-stakeholder.js
 
 # Deployed Contracts
 

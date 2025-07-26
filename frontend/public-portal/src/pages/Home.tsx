@@ -1,45 +1,59 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
-import LoadingIndicator from '../components/LoadingIndicator';
 
 const Home: React.FC = () => {
   return (
-    <div className="home-container">
-      <h2>Agricultural Supply Chain Verification</h2>
-      <p className="intro-text">
-        Welcome to the public verification portal for our agricultural supply chain.
-        This platform uses blockchain technology to provide transparent, immutable records
-        of agricultural products from farm to table.
-      </p>
-
-      <div className="features-container">
-        <div className="feature-card">
-          <h3>Product Verification</h3>
-          <p>Verify product authenticity and view complete traceability reports.</p>
-          <Link to="/verify" className="feature-button">Verify Product</Link>
-        </div>
-
-        <div className="feature-card">
-          <h3>Track Shipments</h3>
-          <p>Track the current location and status of product shipments.</p>
-          <Link to="/track" className="feature-button">Track Shipment</Link>
+    <div className="container">
+      <div className="hero-section">
+        <h1>Blockchain-Powered Agricultural Supply Chain</h1>
+        <p>
+          Verify product authenticity and track shipments using our decentralized
+          blockchain platform for complete transparency and trust.
+        </p>
+      </div>
+      
+      <div className="feature-cards">
+        <div className="card">
+          <h2>Create Product</h2>
+          <p>Register new agricultural products on the blockchain with complete traceability.</p>
+          <Link to="/create-product" className="btn-primary">Create Product</Link>
         </div>
         
-        <div className="feature-card">
-          <h3>QR Code Scanner</h3>
-          <p>Scan product QR codes to quickly access information.</p>
-          <Link to="/scan" className="feature-button">Scan QR Code</Link>
+        <div className="card">
+          <h2>Create Shipment</h2>
+          <p>Set up new shipments with tracking for your agricultural products.</p>
+          <Link to="/create-shipment" className="btn-primary">Create Shipment</Link>
+        </div>
+        
+        <div className="card">
+          <h2>Verify Products</h2>
+          <p>Verify the authenticity of products using their blockchain address.</p>
+          <Link to="/verify" className="btn-primary">Verify Product</Link>
+        </div>
+        
+        <div className="card">
+          <h2>Track Shipments</h2>
+          <p>Track the location and status of shipments in real-time.</p>
+          <Link to="/track" className="btn-primary">Track Shipment</Link>
         </div>
       </div>
-
-      <div className="blockchain-info">
-        <h3>Blockchain-Powered Verification</h3>
-        <p>
-          Our portal is powered by Ethereum blockchain technology, ensuring that all 
-          product data is immutable, transparent, and verifiable. Connect your wallet 
-          to interact with our smart contracts and verify product information directly 
-          from the blockchain.
-        </p>
+      
+      <div className="info-section">
+        <h2>How It Works</h2>
+        <div className="steps">
+          <div className="step">
+            <div className="step-number">1</div>
+            <p>Products and shipments are registered on the blockchain</p>
+          </div>
+          <div className="step">
+            <div className="step-number">2</div>
+            <p>Each transaction is verified and stored immutably</p>
+          </div>
+          <div className="step">
+            <div className="step-number">3</div>
+            <p>Public portal allows anyone to verify authenticity</p>
+          </div>
+        </div>
       </div>
     </div>
   );

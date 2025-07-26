@@ -1,123 +1,138 @@
 import React, { useState } from 'react';
-import { verifyProduct, getProductTraceability, TraceabilityReport } from '../utils/contractHelpers';
-import LoadingIndicator from '../components/LoadingIndicator';
+import { ethers } from 'ethers';
 
+// We need to create contractHelpers.ts again since it was deleted
 const Verify: React.FC = () => {
   const [productAddress, setProductAddress] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [verificationResult, setVerificationResult] = useState<{
+    isAuthentic?: boolean;
+    details?: string;
+    name?: string;
+    producer?: string;
+    timestamp?: Date;
+  } | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const [verificationResult, setVerificationResult] = useState<{isAuthentic: boolean, details: string} | null>(null);
-  const [traceabilityData, setTraceabilityData] = useState<TraceabilityReport | null>(null);
-  
-  const handleVerify = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
+
+  const handleVerify = async () => {
     if (!productAddress) {
       setError('Please enter a product address');
       return;
     }
     
-    setLoading(true);
-    setError('');
-    setVerificationResult(null);
-    setTraceabilityData(null);
-    
+    if (!window.ethereum) {
+      setError('MetaMask is not installed. Please install it to use this feature.');
+      return;
+    }
+
     try {
-      // Verify product authenticity
-      const result = await verifyProduct(productAddress);
-      setVerificationResult(result);
+      setIsLoading(true);
+      setError('');
       
-      // If authentic, get full traceability report
-      if (result.isAuthentic) {
-        const traceability = await getProductTraceability(productAddress);
-        setTraceabilityData(traceability);
+      // Get provider and signer
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
+      
+      // Get the Product Factory contract
+      const productFactoryAddress = '0x8A791620dd6260079BF849Dc5567aDC3F2FdC318'; // Replace with your deployed contract address
+      const productFactoryABI = [
+        "function verifyProduct(address productAddress) view returns (bool isAuthentic, string memory details)",
+        "function getProductDetails(address productAddress) view returns (string memory name, string memory producer, uint256 timestamp)"
+      ];
+
+      const productFactory = new ethers.Contract(
+        productFactoryAddress,
+        productFactoryABI,
+        provider
+      );
+      
+      // Call the verifyProduct function
+      const [isAuthentic, details] = await productFactory.verifyProduct(productAddress);
+      
+      // Get additional product details
+      try {
+        const [name, producer, timestamp] = await productFactory.getProductDetails(productAddress);
+        
+        setVerificationResult({
+          isAuthentic,
+          details,
+          name,
+          producer,
+          timestamp: new Date(Number(timestamp) * 1000)
+        });
+      } catch (detailsError) {
+        // If getting details fails, still show the verification result
+        setVerificationResult({
+          isAuthentic,
+          details
+        });
+        console.error("Error getting product details:", detailsError);
       }
-    } catch (error) {
-      console.error('Error verifying product:', error);
-      setError('Failed to verify product. Please check the address and try again.');
+      
+    } catch (err) {
+      console.error("Error verifying product:", err);
+      setError(`Error verifying product: ${err instanceof Error ? err.message : String(err)}`);
+      setVerificationResult(null);
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
-  
+
   return (
-    <div className="page-container">
-      <h2>Product Verification</h2>
-      <p>Enter a product address to verify its authenticity and view its journey.</p>
+    <div className="container">
+      <div className="page-header">
+        <h1>Verify Product Authenticity</h1>
+        <p>Enter a product address to verify its authenticity on the blockchain.</p>
+      </div>
       
-      <form onSubmit={handleVerify} className="verification-form">
-        <div className="input-group">
-          <label htmlFor="productAddress">Product Address (Ethereum address):</label>
+      <div className="verify-form">
+        <div className="form-group">
+          <label htmlFor="productAddress">Product Address</label>
           <input
             type="text"
             id="productAddress"
+            name="productAddress"
+            placeholder="0x..."
             value={productAddress}
             onChange={(e) => setProductAddress(e.target.value)}
-            placeholder="0x..."
-            required
+            className="form-control"
           />
         </div>
         
-        <button type="submit" className="primary-button" disabled={loading}>
-          {loading ? 'Verifying...' : 'Verify Product'}
+        <button
+          onClick={handleVerify}
+          disabled={isLoading || !productAddress}
+          className="btn-primary"
+        >
+          {isLoading ? 'Verifying...' : 'Verify Product'}
         </button>
-      </form>
+      </div>
       
-      {loading && <LoadingIndicator message="Retrieving blockchain data..." />}
-      
-      {error && <div className="error-message">{error}</div>}
-      
-      {verificationResult && (
-        <div className={`verification-result ${verificationResult.isAuthentic ? 'authentic' : 'not-authentic'}`}>
-          <h3>{verificationResult.isAuthentic ? '✓ Product Verified' : '✗ Product Not Verified'}</h3>
-          <p>{verificationResult.details}</p>
+      {error && (
+        <div className="error-message">
+          {error}
         </div>
       )}
       
-      {traceabilityData && (
-        <div className="traceability-report">
-          <h3>Product Traceability Report</h3>
+      {verificationResult && (
+        <div className={`verification-result ${verificationResult.isAuthentic ? 'authentic' : 'not-authentic'}`}>
+          <h2>Verification Result</h2>
+          <p className="verification-status">
+            Status: {verificationResult.isAuthentic ? 'Authentic ✅' : 'Not Verified ❌'}
+          </p>
           
-          <div className="report-section">
-            <h4>Product Information</h4>
-            <div className="detail-item">
-              <span className="label">Name:</span>
-              <span>{traceabilityData.productName}</span>
+          {verificationResult.name && (
+            <div className="product-details">
+              <h3>Product Details</h3>
+              <p><strong>Name:</strong> {verificationResult.name}</p>
+              <p><strong>Producer:</strong> {verificationResult.producer}</p>
+              <p><strong>Registered:</strong> {verificationResult.timestamp?.toLocaleString()}</p>
             </div>
-            <div className="detail-item">
-              <span className="label">Origin Farm:</span>
-              <span>{traceabilityData.originFarm}</span>
-            </div>
-            <div className="detail-item">
-              <span className="label">Harvest Date:</span>
-              <span>{traceabilityData.harvestDate.toLocaleDateString()}</span>
-            </div>
-          </div>
+          )}
           
-          <div className="report-section">
-            <h4>Processing Steps</h4>
-            {traceabilityData.processingSteps.length > 0 ? (
-              <ul className="steps-list">
-                {traceabilityData.processingSteps.map((step, index) => (
-                  <li key={index}>{step}</li>
-                ))}
-              </ul>
-            ) : (
-              <p>No processing steps recorded</p>
-            )}
-          </div>
-          
-          <div className="report-section">
-            <h4>Certifications</h4>
-            {traceabilityData.certifications.length > 0 ? (
-              <div className="certifications-list">
-                {traceabilityData.certifications.map((cert, index) => (
-                  <span key={index} className="certification-badge">{cert}</span>
-                ))}
-              </div>
-            ) : (
-              <p>No certifications recorded</p>
-            )}
+          <div className="details-box">
+            <h3>Additional Information</h3>
+            <p>{verificationResult.details}</p>
           </div>
         </div>
       )}

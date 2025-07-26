@@ -1,0 +1,40 @@
+// Get the ProductFactory contract instance
+const ProductFactory = await ethers.getContractAt(
+    "ProductFactory",
+    "0x8A791620dd6260079BF849Dc5567aDC3F2FdC318"
+)
+
+// Create a new product with sample data
+const productTx = await ProductFactory.createProduct(
+    "Organic Apples",
+    "Green Valley Farm",
+    Math.floor(Date.now() / 1000),
+    ["Harvested", "Washed", "Packed"],
+    ["Organic", "Fair Trade"]
+)
+
+// Wait for transaction to be mined
+await productTx.wait()
+
+// Get the product address
+const productAddress = await ProductFactory.getLatestProduct()
+console.log("Test Product Address:", productAddress)
+
+// Now let's create a shipment
+const ShipmentFactory = await ethers.getContractAt(
+    "ShipmentFactory",
+    "0x610178dA211FEF7D417bC0e6FeD39F05609AD788"
+)
+
+// Create a shipment with tracking number TRACK123456
+const shipmentTx = await ShipmentFactory.createShipment(
+    "TRACK123456",
+    "Sydney Warehouse",
+    "Global Express"
+)
+await shipmentTx.wait()
+console.log("Test Shipment Created with tracking number: TRACK123456")
+
+// Verify the shipment was created correctly
+const shipmentInfo = await ShipmentFactory.getShipmentInfo("TRACK123456")
+console.log("Shipment Info:", shipmentInfo)
