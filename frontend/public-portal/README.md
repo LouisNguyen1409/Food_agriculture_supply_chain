@@ -1,8 +1,64 @@
-# Getting Started with Create React App
+# Blockchain Supply Chain Public Portal
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+A decentralized public portal for agricultural supply chain verification and tracking built with React, TypeScript, and ethers.js v6.15.0.
 
-## Available Scripts
+## Overview
+
+This portal allows consumers and partners to verify agricultural products, track shipments, and validate the authenticity of items through Ethereum blockchain integration. The portal connects to smart contracts deployed on either localhost, Mumbai testnet, or Polygon mainnet.
+
+## Features
+
+- **Dynamic Wallet Connection**: Connect to MetaMask or any other Ethereum wallet
+- **Network Detection**: Automatically detects and displays current connected network
+- **Product Verification**: Verify authenticity of agricultural products using blockchain records
+- **Shipment Tracking**: Track the status and location of shipments in the supply chain
+- **Detailed Traceability**: View complete history of products including origin, processing steps, and certifications
+
+## Technology Stack
+
+- React 18+
+- TypeScript
+- ethers.js v6.15.0 (for Ethereum blockchain interaction)
+- React Router v6
+
+## Smart Contract Integration
+
+The application connects to Ethereum smart contracts via ethers.js v6. Contract ABIs and address configuration can be found in `src/utils/contractHelpers.ts`. The portal supports multiple networks including:
+
+- Localhost development network (chain ID: 1337)
+- Mumbai Testnet (chain ID: 80001)
+- Polygon Mainnet (chain ID: 137)
+
+## Prerequisites
+
+- Node.js v16 or higher
+- npm or yarn
+- MetaMask or compatible Ethereum wallet browser extension
+
+## Getting Started
+
+### Installation
+
+1. Clone the repository or navigate to the public portal directory:
+   ```bash
+   cd /path/to/Food_agriculture_supply_chain/frontend/public-portal
+   ```
+
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+   or
+   ```bash
+   yarn
+   ```
+
+### Configuration
+
+1. Update contract addresses in `src/utils/contractHelpers.ts` if necessary
+2. Configure network settings for your environment
+
+### Running the Application
 
 In the project directory, you can run:
 

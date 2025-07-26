@@ -2697,8 +2697,8 @@
 
 "@zksync/contracts@github:matter-labs/era-contracts#446d391d34bdb48255d5f8fef8a8248925fc98b9":
   version "0.1.0"
-  resolved "git+ssh://git@github.com/matter-labs/era-contracts.git"
-  integrity sha512-e9dD/MICPqnN85U264A3gUEi1FsTaR620FlsItXbO5tRsTy1vn4CBvWW9qGrZ3ebn6XFE1lshl1pDKZ1Ogr+/g==
+  resolved "git+ssh://git@github.com/matter-labs/era-contracts.git#446d391d34bdb48255d5f8fef8a8248925fc98b9"
+  integrity sha512-KhgPVqd/MgV/ICUEsQf1uyL321GNPqsyHSAPMCaa9vW94fbuQK6RwMWoyQOPlZP17cQD8tzLNCSXqz73652kow==
 
 abbrev@1, abbrev@1.0.x:
   version "1.0.9"
