@@ -51,5 +51,16 @@
     "nodemon": "^3.1.10",
     "solidity-coverage": "^0.8.0",
     "typechain": "^8.3.0"
-  }
+  },
+  "name": "food_agriculture_supply_chain",
+  "version": "1.0.0",
+  "description": "# Deployed Contracts",
+  "main": ".solcover.js",
+  "directories": {
+    "lib": "lib",
+    "test": "test"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
 }
