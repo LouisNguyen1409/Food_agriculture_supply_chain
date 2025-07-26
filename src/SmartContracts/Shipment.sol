@@ -3,7 +3,7 @@ pragma solidity ^0.8.0;
 
 import "./StakeholderRegistry.sol";
 import "./Product.sol";
-import "./Stakeholder.sol";
+import "./StakeholderManager.sol";
 
 contract Shipment {
     enum ShipmentStatus {
@@ -64,7 +64,7 @@ contract Shipment {
 
     // Modifiers
     modifier onlyRegisteredStakeholder(
-        Stakeholder.StakeholderRole _requiredRole
+        StakeholderManager.StakeholderRole _requiredRole
     ) {
         require(
             stakeholderRegistry.isRegisteredStakeholder(
@@ -82,7 +82,7 @@ contract Shipment {
                 msg.sender == receiver ||
                 stakeholderRegistry.isRegisteredStakeholder(
                     msg.sender,
-                    Stakeholder.StakeholderRole.DISTRIBUTOR
+                    StakeholderManager.StakeholderRole.DISTRIBUTOR
                 ),
             "Not authorized for this shipment"
         );

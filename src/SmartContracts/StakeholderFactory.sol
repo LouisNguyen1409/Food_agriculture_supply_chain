@@ -1,17 +1,16 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import "./Registry.sol";
-import "./Stakeholder.sol";
+import "./StakeholderManager.sol";
+import "./StakeholderManager.sol";
 
 contract StakeholderFactory {
-    Registry public registry;
+    StakeholderManager public stakeholderManager;
     address public admin;
 
     event StakeholderCreated(
-        address indexed stakeholderContractAddress,
         address indexed stakeholderAddress,
-        Stakeholder.StakeholderRole indexed role,
+        StakeholderManager.StakeholderRole indexed role,
         string businessName,
         string businessLicense,
         uint256 timestamp
@@ -22,19 +21,19 @@ contract StakeholderFactory {
         _;
     }
 
-    constructor(address _registry) {
-        registry = Registry(_registry);
+    constructor(address _stakeholderManager) {
+        stakeholderManager = StakeholderManager(_stakeholderManager);
         admin = msg.sender;
     }
 
     function createStakeholder(
         address _stakeholderAddress,
-        Stakeholder.StakeholderRole _role,
+        StakeholderManager.StakeholderRole _role,
         string memory _businessName,
         string memory _businessLicense,
         string memory _location,
         string memory _certifications
-    ) external onlyAdmin returns (address stakeholderContractAddress) {
+    ) external onlyAdmin returns (address) {
         require(
             _stakeholderAddress != address(0),
             "Invalid stakeholder address"
@@ -48,30 +47,17 @@ contract StakeholderFactory {
             "Business license cannot be empty"
         );
 
-        // Create new Stakeholder contract
-        stakeholderContractAddress = address(
-            new Stakeholder(
-                _stakeholderAddress,
-                _role,
-                _businessName,
-                _businessLicense,
-                _location,
-                _certifications,
-                admin
-            )
-        );
-
-        // Register the stakeholder in the main registry
-        registry.registerStakeholder(
-            stakeholderContractAddress,
-            _businessLicense,
+        // Register the stakeholder in the StakeholderManager
+        stakeholderManager.registerStakeholder(
             _stakeholderAddress,
-            _role
+            _role,
+            _businessName,
+            _businessLicense,
+            _location,
+            _certifications
         );
-
 
         emit StakeholderCreated(
-            stakeholderContractAddress,
             _stakeholderAddress,
             _role,
             _businessName,
@@ -79,7 +65,6 @@ contract StakeholderFactory {
             block.timestamp
         );
 
-        return stakeholderContractAddress;
+        return _stakeholderAddress;
     }
-
 }

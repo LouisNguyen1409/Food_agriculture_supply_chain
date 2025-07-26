@@ -1,20 +1,17 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import "./Stakeholder.sol";
+import "./StakeholderManager.sol";
 
 contract Registry {
 
+    StakeholderManager public stakeholderManager;
+    
     address[] public products;
     address[] public shipments;
-    address[] public stakeholders;
     mapping(address => bool) public isRegistered;
 
-    // Stakeholder-specific mappings for efficient lookups
-    mapping(string => address) public licenseToStakeholder;
-    mapping(address => address) public walletToStakeholderContract;
-    mapping(Stakeholder.StakeholderRole => address[]) public stakeholdersByRole;
-
+    // Events
     event ShipmentRegistered(
         address indexed _shipment,
         string indexed trackingNumber,
@@ -22,13 +19,12 @@ contract Registry {
         address sender,
         address receiver
     );
+    
     event ProductRegistered(address indexed _product);
-    event StakeholderRegistered(
-        address indexed _stakeholderContract,
-        string indexed businessLicense,
-        address indexed stakeholderAddress,
-        Stakeholder.StakeholderRole role
-    );
+
+    constructor(address _stakeholderManager) {
+        stakeholderManager = StakeholderManager(_stakeholderManager);
+    }
 
     function registerShipment(
         address _shipment,
@@ -38,8 +34,17 @@ contract Registry {
         address _receiver
     ) public {
         require(!isRegistered[_shipment], "Shipment already registered");
+        require(_productAddress != address(0), "Invalid product address");
+        require(_sender != address(0), "Invalid sender address");
+        require(_receiver != address(0), "Invalid receiver address");
+        
+        // Verify sender and receiver are registered stakeholders
+        require(stakeholderManager.isRegistered(_sender), "Sender not registered");
+        require(stakeholderManager.isRegistered(_receiver), "Receiver not registered");
+        
         isRegistered[_shipment] = true;
         shipments.push(_shipment);
+        
         emit ShipmentRegistered(
             _shipment,
             _trackingNumber,
@@ -51,42 +56,12 @@ contract Registry {
 
     function registerProduct(address _product) public {
         require(!isRegistered[_product], "Product already registered");
+        require(_product != address(0), "Invalid product address");
+        
         isRegistered[_product] = true;
         products.push(_product);
+        
         emit ProductRegistered(_product);
-    }
-
-    function registerStakeholder(
-        address _stakeholderContract,
-        string memory _businessLicense,
-        address _stakeholderAddress,
-        Stakeholder.StakeholderRole _role
-    ) public {
-        require(
-            !isRegistered[_stakeholderContract],
-            "Stakeholder already registered"
-        );
-        require(
-            licenseToStakeholder[_businessLicense] == address(0),
-            "Business license already registered"
-        );
-        require(
-            walletToStakeholderContract[_stakeholderAddress] == address(0),
-            "Stakeholder address already has a contract"
-        );
-
-        isRegistered[_stakeholderContract] = true;
-        stakeholders.push(_stakeholderContract);
-        licenseToStakeholder[_businessLicense] = _stakeholderContract;
-        walletToStakeholderContract[_stakeholderAddress] = _stakeholderContract;
-        stakeholdersByRole[_role].push(_stakeholderContract);
-
-        emit StakeholderRegistered(
-            _stakeholderContract,
-            _businessLicense,
-            _stakeholderAddress,
-            _role
-        );
     }
 
     function getAllProducts() external view returns (address[] memory) {
@@ -95,28 +70,6 @@ contract Registry {
 
     function getAllShipments() external view returns (address[] memory) {
         return shipments;
-    }
-
-    function getAllStakeholders() external view returns (address[] memory) {
-        return stakeholders;
-    }
-
-    function getStakeholdersByRole(
-        Stakeholder.StakeholderRole _role
-    ) external view returns (address[] memory) {
-        return stakeholdersByRole[_role];
-    }
-
-    function getStakeholderByLicense(
-        string memory _businessLicense
-    ) external view returns (address) {
-        return licenseToStakeholder[_businessLicense];
-    }
-
-    function getStakeholderByWallet(
-        address _stakeholderAddress
-    ) external view returns (address) {
-        return walletToStakeholderContract[_stakeholderAddress];
     }
 
     function getTotalProducts() external view returns (uint256) {
@@ -129,5 +82,45 @@ contract Registry {
 
     function isEntityRegistered(address _entity) external view returns (bool) {
         return isRegistered[_entity];
+    }
+
+    /**
+     * @notice Get stakeholder information through StakeholderManager
+     */
+    function getStakeholderInfo(address _stakeholderAddress) 
+        external 
+        view 
+        returns (StakeholderManager.StakeholderInfo memory) 
+    {
+        return stakeholderManager.getStakeholderInfo(_stakeholderAddress);
+    }
+
+    /**
+     * @notice Check if address has specific role
+     */
+    function hasStakeholderRole(address _stakeholderAddress, StakeholderManager.StakeholderRole _role)
+        external
+        view
+        returns (bool)
+    {
+        return stakeholderManager.hasRole(_stakeholderAddress, _role);
+    }
+
+    /**
+     * @notice Check if stakeholder is registered
+     */
+    function isStakeholderRegistered(address _stakeholderAddress) external view returns (bool) {
+        return stakeholderManager.isRegistered(_stakeholderAddress);
+    }
+
+    /**
+     * @notice Get stakeholders by role
+     */
+    function getStakeholdersByRole(StakeholderManager.StakeholderRole _role)
+        external
+        view
+        returns (address[] memory)
+    {
+        return stakeholderManager.getStakeholdersByRole(_role);
     }
 }

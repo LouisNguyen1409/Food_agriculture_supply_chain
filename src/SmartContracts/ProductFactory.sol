@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 import "./StakeholderRegistry.sol";
-import "./Stakeholder.sol";
+import "./StakeholderManager.sol";
 import "./Product.sol";
 import "./Registry.sol";
 
@@ -24,7 +24,7 @@ contract ProductFactory {
     );
 
     modifier onlyRegisteredStakeholder(
-        Stakeholder.StakeholderRole _requiredRole
+        StakeholderManager.StakeholderRole _requiredRole
     ) {
         require(
             stakeholderRegistry.isRegisteredStakeholder(
@@ -63,7 +63,7 @@ contract ProductFactory {
         string memory farmData
     )
         public
-        onlyRegisteredStakeholder(Stakeholder.StakeholderRole.FARMER)
+        onlyRegisteredStakeholder(StakeholderManager.StakeholderRole.FARMER)
         returns (address)
     {
         address productAddress = address(

@@ -4,7 +4,7 @@ pragma solidity ^0.8.0;
 import "./Product.sol";
 import "./Shipment.sol";
 import "./StakeholderRegistry.sol";
-import "./Stakeholder.sol";
+import "./StakeholderManager.sol";
 import "./Registry.sol";
 
 contract PublicVerification {
@@ -14,7 +14,7 @@ contract PublicVerification {
     // Define the StakeholderInfo struct locally since it's used in return types
     struct StakeholderInfo {
         address stakeholderAddress;
-        Stakeholder.StakeholderRole role;
+        StakeholderManager.StakeholderRole role;
         string businessName;
         string businessLicense;
         string location;
@@ -73,7 +73,7 @@ contract PublicVerification {
                 if (
                     !stakeholderRegistry.isRegisteredStakeholder(
                         farmer,
-                        Stakeholder.StakeholderRole.FARMER
+                        StakeholderManager.StakeholderRole.FARMER
                     )
                 ) {
                     stakeholdersValid = false;
@@ -92,7 +92,7 @@ contract PublicVerification {
                         processingStage.timestamp > 0 &&
                         !stakeholderRegistry.isRegisteredStakeholder(
                             processingStage.stakeholder,
-                            Stakeholder.StakeholderRole.PROCESSOR
+                            StakeholderManager.StakeholderRole.PROCESSOR
                         )
                     ) {
                         stakeholdersValid = false;
@@ -110,7 +110,7 @@ contract PublicVerification {
                         distributionStage.timestamp > 0 &&
                         !stakeholderRegistry.isRegisteredStakeholder(
                             distributionStage.stakeholder,
-                            Stakeholder.StakeholderRole.DISTRIBUTOR
+                            StakeholderManager.StakeholderRole.DISTRIBUTOR
                         )
                     ) {
                         stakeholdersValid = false;
@@ -129,7 +129,7 @@ contract PublicVerification {
                         retailStage.timestamp > 0 &&
                         !stakeholderRegistry.isRegisteredStakeholder(
                             retailStage.stakeholder,
-                            Stakeholder.StakeholderRole.RETAILER
+                            StakeholderManager.StakeholderRole.RETAILER
                         )
                     ) {
                         stakeholdersValid = false;
@@ -260,7 +260,7 @@ contract PublicVerification {
             if (farmStage.timestamp > 0) {
                 (
                     address addr,
-                    Stakeholder.StakeholderRole role,
+                    StakeholderManager.StakeholderRole role,
                     string memory name,
                     string memory license,
                     string memory location,
@@ -288,7 +288,7 @@ contract PublicVerification {
             if (processingStage.timestamp > 0) {
                 (
                     address addr,
-                    Stakeholder.StakeholderRole role,
+                    StakeholderManager.StakeholderRole role,
                     string memory name,
                     string memory license,
                     string memory location,
@@ -316,7 +316,7 @@ contract PublicVerification {
             if (distributionStage.timestamp > 0) {
                 (
                     address addr,
-                    Stakeholder.StakeholderRole role,
+                    StakeholderManager.StakeholderRole role,
                     string memory name,
                     string memory license,
                     string memory location,
@@ -344,7 +344,7 @@ contract PublicVerification {
             if (retailStage.timestamp > 0) {
                 (
                     address addr,
-                    Stakeholder.StakeholderRole role,
+                    StakeholderManager.StakeholderRole role,
                     string memory name,
                     string memory license,
                     string memory location,

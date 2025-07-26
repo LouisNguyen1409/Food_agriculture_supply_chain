@@ -4,7 +4,7 @@ pragma solidity ^0.8.0;
 import "./Registry.sol";
 import "./Shipment.sol";
 import "./StakeholderRegistry.sol";
-import "./Stakeholder.sol";
+import "./StakeholderManager.sol";
 
 contract ShipmentFactory {
     Registry public registry;
@@ -24,7 +24,7 @@ contract ShipmentFactory {
         require(
             stakeholderRegistry.isRegisteredStakeholder(
                 msg.sender,
-                Stakeholder.StakeholderRole.DISTRIBUTOR
+                StakeholderManager.StakeholderRole.DISTRIBUTOR
             ),
             "Not registered as distributor"
         );

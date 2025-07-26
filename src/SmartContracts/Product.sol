@@ -2,7 +2,7 @@
 pragma solidity ^0.8.0;
 
 import "./StakeholderRegistry.sol";
-import "./Stakeholder.sol";
+import "./StakeholderManager.sol";
 import "./Oracles/Weather.sol";
 import "./Oracles/Price.sol";
 import "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
@@ -84,7 +84,7 @@ contract Product {
 
     // Modifiers
     modifier onlyRegisteredStakeholder(
-        Stakeholder.StakeholderRole _requiredRole
+        StakeholderManager.StakeholderRole _requiredRole
     ) {
         require(
             stakeholderRegistry.isRegisteredStakeholder(
@@ -177,7 +177,7 @@ contract Product {
         string calldata _processingData
     )
         external
-        onlyRegisteredStakeholder(Stakeholder.StakeholderRole.PROCESSOR)
+        onlyRegisteredStakeholder(StakeholderManager.StakeholderRole.PROCESSOR)
         validStageTransition(ProductStage.PROCESSING)
         nonEmptyString(_processingData)
     {
@@ -191,7 +191,7 @@ contract Product {
         string calldata _distributionData
     )
         external
-        onlyRegisteredStakeholder(Stakeholder.StakeholderRole.DISTRIBUTOR)
+        onlyRegisteredStakeholder(StakeholderManager.StakeholderRole.DISTRIBUTOR)
         validStageTransition(ProductStage.DISTRIBUTION)
         nonEmptyString(_distributionData)
     {
@@ -205,7 +205,7 @@ contract Product {
         string calldata _retailData
     )
         external
-        onlyRegisteredStakeholder(Stakeholder.StakeholderRole.RETAILER)
+        onlyRegisteredStakeholder(StakeholderManager.StakeholderRole.RETAILER)
         validStageTransition(ProductStage.RETAIL)
         nonEmptyString(_retailData)
     {
