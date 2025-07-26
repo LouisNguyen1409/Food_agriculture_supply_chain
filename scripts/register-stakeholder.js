@@ -13,10 +13,11 @@ async function main() {
   // StakeholderManager contract with actual address from deployments
   const stakeholderManagerAddress = "0x5FC8d32690cc91D4c39d9d3abcBD16989F875707";
   
-  // Get the stakeholder role enum values (0 = FARMER, 1 = DISTRIBUTOR, 2 = RETAILER, etc.)
-  const FARMER_ROLE = 0;
+  // In the contract, StakeholderRole enum is defined as:
+  // enum StakeholderRole { NONE(0), FARMER(1), PROCESSOR(2), RETAILER(3), DISTRIBUTOR(4) }
+  const FARMER_ROLE = 1; // FARMER is 1, not 0!
   
-  // ABI with the registerStakeholder function
+  // ABI with the correct function signatures
   const stakeholderManagerABI = [
     "function registerStakeholder(address _stakeholderAddress, uint8 _role, string memory _businessName, string memory _businessLicense, string memory _location, string memory _certifications) returns (bool)",
     "function hasRole(address _stakeholderAddress, uint8 _role) view returns (bool)"
@@ -29,12 +30,16 @@ async function main() {
   );
   
   try {
+    console.log(`Checking if address ${address} is already registered as a farmer (role ${FARMER_ROLE})...`);
+    
     // Check if already registered as a farmer
     const isAlreadyFarmer = await stakeholderManager.hasRole(address, FARMER_ROLE);
     if (isAlreadyFarmer) {
       console.log(`Address ${address} is already registered as a farmer.`);
       return;
     }
+    
+    console.log("Not registered yet, proceeding with registration...");
     
     // Register as a farmer
     const tx = await stakeholderManager.registerStakeholder(

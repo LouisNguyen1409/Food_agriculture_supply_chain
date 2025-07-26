@@ -1,5 +1,12 @@
 # Food_agriculture_supply_chain
+backend
+npx hardhat node --network hardhat
+
 npx hardhat run deploy/03-clean-deploy.js --network localhost
+
+frontend:
+script farmer: scripts: register-stakeholder.js
+npm start
 
 npx hardhat deploy --tags clean
 
