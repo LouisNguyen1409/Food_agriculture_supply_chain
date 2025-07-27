@@ -68,19 +68,23 @@ const CreateProduct: React.FC = () => {
       const receipt = await tx.wait();
       
       // Get the product address from the transaction receipt
-      // Typically we would need to parse logs to get this, but for this example we'll assume
-      // we can get it from a hypothetical getLatestProduct() method
+      // Extract the product address from the transaction logs
       try {
-        const productFactoryWithGetLatest = new ethers.Contract(
-          productFactoryAddress,
-          [...productFactoryABI, "function getLatestProduct() view returns (address)"],
-          provider
-        );
-        
-        const productAddress = await productFactoryWithGetLatest.getLatestProduct();
-        setCreatedProductAddress(productAddress);
+        if (receipt && receipt.logs && receipt.logs.length > 0) {
+          // The product address is likely in the first log's address field
+          // This assumes the contract emits an event when creating a product
+          console.log('Transaction receipt logs:', receipt.logs);
+          
+          // In factory pattern contracts, usually the created contract address is in the logs
+          // For ProductFactory, the created product address is often in logs[0].address
+          const productAddress = receipt.logs[0].address;
+          setCreatedProductAddress(productAddress);
+          
+          console.log('Extracted product address:', productAddress);
+          setSuccessMessage(`Product created successfully! Product address: ${productAddress}`);
+        }
       } catch (error) {
-        console.error("Could not get created product address:", error);
+        console.error("Could not parse product address from logs:", error);
       }
       
       setSuccessMessage('Product created successfully!');

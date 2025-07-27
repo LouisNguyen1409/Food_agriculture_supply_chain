@@ -29,50 +29,51 @@ const Verify: React.FC = () => {
       setIsLoading(true);
       setError('');
       
-      // Get provider and signer
+      // Get provider
       const provider = new ethers.BrowserProvider(window.ethereum);
-      const signer = await provider.getSigner();
       
-      // Get the Product Factory contract
-      const productFactoryAddress = '0x8A791620dd6260079BF849Dc5567aDC3F2FdC318'; // Replace with your deployed contract address
-      const productFactoryABI = [
-        "function verifyProduct(address productAddress) view returns (bool isAuthentic, string memory details)",
-        "function getProductDetails(address productAddress) view returns (string memory name, string memory producer, uint256 timestamp)"
+      // Connect directly to the Product contract
+      const productABI = [
+        "function verifyProduct() external view returns (bool)",
+        "function name() external view returns (string memory)",
+        "function description() external view returns (string memory)",
+        "function farmer() external view returns (address)",
+        "function createdAt() external view returns (uint32)"
       ];
 
-      const productFactory = new ethers.Contract(
-        productFactoryAddress,
-        productFactoryABI,
+      const product = new ethers.Contract(
+        productAddress,
+        productABI,
         provider
       );
       
-      // Call the verifyProduct function
-      const [isAuthentic, details] = await productFactory.verifyProduct(productAddress);
-      
-      // Get additional product details
       try {
-        const [name, producer, timestamp] = await productFactory.getProductDetails(productAddress);
+        // Call the verifyProduct function on the Product contract
+        const isAuthentic = await product.verifyProduct();
+        
+        // Get basic product details
+        const name = await product.name();
+        const description = await product.description();
+        const farmer = await product.farmer();
+        const createdAt = await product.createdAt();
         
         setVerificationResult({
           isAuthentic,
-          details,
+          details: description,
           name,
-          producer,
-          timestamp: new Date(Number(timestamp) * 1000)
+          producer: farmer,
+          timestamp: new Date(Number(createdAt) * 1000)
         });
-      } catch (detailsError) {
-        // If getting details fails, still show the verification result
+      } catch (error) {
+        console.error("Error verifying product:", error);
         setVerificationResult({
-          isAuthentic,
-          details
+          isAuthentic: false,
+          details: "Could not verify this product. Either the address is incorrect, or it's not a valid product contract."
         });
-        console.error("Error getting product details:", detailsError);
       }
-      
-    } catch (err) {
-      console.error("Error verifying product:", err);
-      setError(`Error verifying product: ${err instanceof Error ? err.message : String(err)}`);
-      setVerificationResult(null);
+    } catch (error) {
+      console.error("Error verifying product:", error);
+      setError('Could not connect to the product contract. Please check the address and try again.');
     } finally {
       setIsLoading(false);
     }
