@@ -436,4 +436,18 @@ contract StakeholderManager {
         }
         return false;
     }
+
+    function getAllStakeholdersRoles()
+        external
+        view
+        returns (StakeholderRole[] memory)
+    {
+        StakeholderRole[] memory roles = new StakeholderRole[](
+            totalStakeholders
+        );
+        for (uint256 i = 0; i < totalStakeholders; i++) {
+            roles[i] = stakeholders[allStakeholders[i]].role;
+        }
+        return roles;
+    }
 }

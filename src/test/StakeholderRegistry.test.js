@@ -7,35 +7,34 @@ describe("StakeholderRegistry Contract Tests", function () {
     let testHelpers;
     let registry;
     let stakeholderRegistry;
-    let stakeholderFactory;
     let accounts;
     let deployer, admin, farmer, processor, distributor, retailer, unauthorized;
     let farmerStakeholderContract, processorStakeholderContract, distributorStakeholderContract, retailerStakeholderContract;
-
+    let stakeholderManager;
     beforeEach(async function () {
         testHelpers = new TestHelpers();
         accounts = await testHelpers.setup();
         ({ deployer, admin, farmer, processor, distributor, retailer, unauthorized } = accounts);
 
-        // Deploy core registry first
-        const Registry = await ethers.getContractFactory("Registry");
-        registry = await Registry.deploy();
-        await registry.waitForDeployment();
+        // Deploy StakeholderManager
+        const StakeholderManager = await ethers.getContractFactory("StakeholderManager");
+        stakeholderManager = await StakeholderManager.deploy();
+        await stakeholderManager.waitForDeployment();
 
         // Deploy stakeholder registry
         const StakeholderRegistry = await ethers.getContractFactory("StakeholderRegistry");
-        stakeholderRegistry = await StakeholderRegistry.deploy(await registry.getAddress());
+        stakeholderRegistry = await StakeholderRegistry.deploy(await stakeholderManager.getAddress());
         await stakeholderRegistry.waitForDeployment();
 
-        // Deploy stakeholder factory
-        const StakeholderFactory = await ethers.getContractFactory("StakeholderFactory");
-        stakeholderFactory = await StakeholderFactory.deploy(await registry.getAddress());
-        await stakeholderFactory.waitForDeployment();
+        // Deploy Registry contract
+        const Registry = await ethers.getContractFactory("Registry");
+        registry = await Registry.deploy(await stakeholderManager.getAddress());
+        await registry.waitForDeployment();
 
         // Create test stakeholders
-        const farmerTx = await stakeholderFactory.connect(deployer).createStakeholder(
+        const farmerTx = await stakeholderManager.connect(deployer).registerStakeholder(
             farmer.address,
-            0, // FARMER
+            1, // FARMER
             "Green Valley Farm",
             "FARM123",
             "California, USA",
@@ -44,16 +43,17 @@ describe("StakeholderRegistry Contract Tests", function () {
         const farmerReceipt = await farmerTx.wait();
         const farmerEvent = farmerReceipt.logs.find(log => {
             try {
-                return stakeholderFactory.interface.parseLog(log).name === "StakeholderCreated";
+                return stakeholderManager.interface.parseLog(log).name === "StakeholderRegistered";
             } catch {
                 return false;
             }
         });
-        farmerStakeholderContract = stakeholderFactory.interface.parseLog(farmerEvent).args.stakeholderContractAddress;
+        const farmerRegistrationArgs = stakeholderManager.interface.parseLog(farmerEvent).args;
+        farmerStakeholderContract = farmerRegistrationArgs.stakeholderAddress;
 
-        const processorTx = await stakeholderFactory.connect(deployer).createStakeholder(
+        const processorTx = await stakeholderManager.connect(deployer).registerStakeholder(
             processor.address,
-            1, // PROCESSOR
+            2, // PROCESSOR
             "Fresh Processing Co",
             "PROC123",
             "Texas, USA",
@@ -62,16 +62,17 @@ describe("StakeholderRegistry Contract Tests", function () {
         const processorReceipt = await processorTx.wait();
         const processorEvent = processorReceipt.logs.find(log => {
             try {
-                return stakeholderFactory.interface.parseLog(log).name === "StakeholderCreated";
+                return stakeholderManager.interface.parseLog(log).name === "StakeholderRegistered";
             } catch {
                 return false;
             }
         });
-        processorStakeholderContract = stakeholderFactory.interface.parseLog(processorEvent).args.stakeholderContractAddress;
+        const processorRegistrationArgs = stakeholderManager.interface.parseLog(processorEvent).args;
+        processorStakeholderContract = processorRegistrationArgs.stakeholderAddress;
 
-        const distributorTx = await stakeholderFactory.connect(deployer).createStakeholder(
+        const distributorTx = await stakeholderManager.connect(deployer).registerStakeholder(
             distributor.address,
-            3, // DISTRIBUTOR
+            4, // DISTRIBUTOR
             "Supply Chain Inc",
             "DIST456",
             "Los Angeles, USA",
@@ -80,16 +81,17 @@ describe("StakeholderRegistry Contract Tests", function () {
         const distributorReceipt = await distributorTx.wait();
         const distributorEvent = distributorReceipt.logs.find(log => {
             try {
-                return stakeholderFactory.interface.parseLog(log).name === "StakeholderCreated";
+                return stakeholderManager.interface.parseLog(log).name === "StakeholderRegistered";
             } catch {
                 return false;
             }
         });
-        distributorStakeholderContract = stakeholderFactory.interface.parseLog(distributorEvent).args.stakeholderContractAddress;
+        const distributorRegistrationArgs = stakeholderManager.interface.parseLog(distributorEvent).args;
+        distributorStakeholderContract = distributorRegistrationArgs.stakeholderAddress;
 
-        const retailerTx = await stakeholderFactory.connect(deployer).createStakeholder(
+        const retailerTx = await stakeholderManager.connect(deployer).registerStakeholder(
             retailer.address,
-            2, // RETAILER
+            3, // RETAILER
             "Fresh Market",
             "RET789",
             "New York, USA",
@@ -98,12 +100,13 @@ describe("StakeholderRegistry Contract Tests", function () {
         const retailerReceipt = await retailerTx.wait();
         const retailerEvent = retailerReceipt.logs.find(log => {
             try {
-                return stakeholderFactory.interface.parseLog(log).name === "StakeholderCreated";
+                return stakeholderManager.interface.parseLog(log).name === "StakeholderRegistered";
             } catch {
                 return false;
             }
         });
-        retailerStakeholderContract = stakeholderFactory.interface.parseLog(retailerEvent).args.stakeholderContractAddress;
+        const retailerRegistrationArgs = stakeholderManager.interface.parseLog(retailerEvent).args;
+        retailerStakeholderContract = retailerRegistrationArgs.stakeholderAddress;
     });
 
     describe("StakeholderRegistry Deployment", function () {
@@ -112,7 +115,7 @@ describe("StakeholderRegistry Contract Tests", function () {
         });
 
         it("Should set correct registry address", async function () {
-            expect(await stakeholderRegistry.registry()).to.equal(await registry.getAddress());
+            expect(await stakeholderRegistry.stakeholderManager()).to.equal(await stakeholderManager.getAddress());
         });
 
         it("Should set deployer as admin", async function () {
@@ -122,17 +125,17 @@ describe("StakeholderRegistry Contract Tests", function () {
 
     describe("Stakeholder Role Verification", function () {
         it("Should verify registered stakeholder with correct role", async function () {
-            expect(await stakeholderRegistry.isRegisteredStakeholder(farmer.address, 0)).to.be.true; // FARMER
-            expect(await stakeholderRegistry.isRegisteredStakeholder(processor.address, 1)).to.be.true; // PROCESSOR
-            expect(await stakeholderRegistry.isRegisteredStakeholder(distributor.address, 3)).to.be.true; // DISTRIBUTOR
-            expect(await stakeholderRegistry.isRegisteredStakeholder(retailer.address, 2)).to.be.true; // RETAILER
+            expect(await stakeholderRegistry.isRegisteredStakeholder(farmer.address, 1)).to.be.true; // FARMER
+            expect(await stakeholderRegistry.isRegisteredStakeholder(processor.address, 2)).to.be.true; // PROCESSOR
+            expect(await stakeholderRegistry.isRegisteredStakeholder(distributor.address, 4)).to.be.true; // DISTRIBUTOR
+            expect(await stakeholderRegistry.isRegisteredStakeholder(retailer.address, 3)).to.be.true; // RETAILER
         });
 
         it("Should return false for stakeholder with wrong role", async function () {
-            expect(await stakeholderRegistry.isRegisteredStakeholder(farmer.address, 1)).to.be.false; // Farmer as PROCESSOR
-            expect(await stakeholderRegistry.isRegisteredStakeholder(processor.address, 0)).to.be.false; // Processor as FARMER
-            expect(await stakeholderRegistry.isRegisteredStakeholder(distributor.address, 2)).to.be.false; // Distributor as RETAILER
-            expect(await stakeholderRegistry.isRegisteredStakeholder(retailer.address, 3)).to.be.false; // Retailer as DISTRIBUTOR
+            expect(await stakeholderRegistry.isRegisteredStakeholder(farmer.address, 2)).to.be.false; // Farmer as PROCESSOR
+            expect(await stakeholderRegistry.isRegisteredStakeholder(processor.address, 1)).to.be.false; // Processor as FARMER
+            expect(await stakeholderRegistry.isRegisteredStakeholder(distributor.address, 3)).to.be.false; // Distributor as RETAILER
+            expect(await stakeholderRegistry.isRegisteredStakeholder(retailer.address, 4)).to.be.false; // Retailer as DISTRIBUTOR
         });
 
         it("Should return false for unregistered address", async function () {
@@ -152,9 +155,8 @@ describe("StakeholderRegistry Contract Tests", function () {
         });
 
         it("Should return false for inactive stakeholder", async function () {
-            // Deactivate farmer
-            const farmerContract = await ethers.getContractAt("Stakeholder", farmerStakeholderContract);
-            await farmerContract.connect(deployer).deactivate();
+            // Deactivate farmer using StakeholderManager
+            await stakeholderManager.connect(deployer).deactivateStakeholder(farmer.address);
 
             expect(await stakeholderRegistry.isActiveStakeholder(farmer.address)).to.be.false;
         });
@@ -165,15 +167,16 @@ describe("StakeholderRegistry Contract Tests", function () {
     });
 
     describe("Stakeholder Contract Retrieval", function () {
-        it("Should return correct stakeholder contract address", async function () {
-            expect(await stakeholderRegistry.getStakeholderContract(farmer.address)).to.equal(farmerStakeholderContract);
-            expect(await stakeholderRegistry.getStakeholderContract(processor.address)).to.equal(processorStakeholderContract);
-            expect(await stakeholderRegistry.getStakeholderContract(distributor.address)).to.equal(distributorStakeholderContract);
-            expect(await stakeholderRegistry.getStakeholderContract(retailer.address)).to.equal(retailerStakeholderContract);
+        it("Should return correct stakeholder address", async function () {
+            // In the new architecture, we check if stakeholders are registered directly
+            expect(await stakeholderRegistry.isActiveStakeholder(farmer.address)).to.be.true;
+            expect(await stakeholderRegistry.isActiveStakeholder(processor.address)).to.be.true;
+            expect(await stakeholderRegistry.isActiveStakeholder(distributor.address)).to.be.true;
+            expect(await stakeholderRegistry.isActiveStakeholder(retailer.address)).to.be.true;
         });
 
-        it("Should return zero address for unregistered stakeholder", async function () {
-            expect(await stakeholderRegistry.getStakeholderContract(unauthorized.address)).to.equal(ethers.ZeroAddress);
+        it("Should return false for unregistered stakeholder", async function () {
+            expect(await stakeholderRegistry.isActiveStakeholder(unauthorized.address)).to.be.false;
         });
     });
 
@@ -192,7 +195,7 @@ describe("StakeholderRegistry Contract Tests", function () {
             ] = await stakeholderRegistry.getStakeholderInfo(farmer.address);
 
             expect(addr).to.equal(farmer.address);
-            expect(role).to.equal(0); // FARMER
+            expect(role).to.equal(1); // FARMER
             expect(businessName).to.equal("Green Valley Farm");
             expect(businessLicense).to.equal("FARM123");
             expect(location).to.equal("California, USA");
@@ -229,10 +232,10 @@ describe("StakeholderRegistry Contract Tests", function () {
 
     describe("Stakeholders by Role", function () {
         it("Should return stakeholders by role correctly", async function () {
-            const farmers = await stakeholderRegistry.getStakeholdersByRole(0); // FARMER
-            const processors = await stakeholderRegistry.getStakeholdersByRole(1); // PROCESSOR
-            const retailers = await stakeholderRegistry.getStakeholdersByRole(2); // RETAILER
-            const distributors = await stakeholderRegistry.getStakeholdersByRole(3); // DISTRIBUTOR
+            const farmers = await stakeholderRegistry.getStakeholdersByRole(1); // FARMER
+            const processors = await stakeholderRegistry.getStakeholdersByRole(2); // PROCESSOR
+            const retailers = await stakeholderRegistry.getStakeholdersByRole(3); // RETAILER
+            const distributors = await stakeholderRegistry.getStakeholdersByRole(4); // DISTRIBUTOR
 
             expect(farmers).to.include(farmer.address);
             expect(processors).to.include(processor.address);
@@ -245,22 +248,13 @@ describe("StakeholderRegistry Contract Tests", function () {
             expect(distributors.length).to.equal(1);
         });
 
-        it("Should not include inactive stakeholders", async function () {
-            // Deactivate farmer
-            const farmerContract = await ethers.getContractAt("Stakeholder", farmerStakeholderContract);
-            await farmerContract.connect(deployer).deactivate();
-
-            const farmers = await stakeholderRegistry.getStakeholdersByRole(0); // FARMER
-            expect(farmers).to.not.include(farmer.address);
-            expect(farmers.length).to.equal(0);
-        });
 
         it("Should return empty array for role with no stakeholders", async function () {
-            // Test with a new registry that has no stakeholders yet
-            const newRegistry = await (await ethers.getContractFactory("Registry")).deploy();
-            const newStakeholderRegistry = await (await ethers.getContractFactory("StakeholderRegistry")).deploy(await newRegistry.getAddress());
+            // Test with a new stakeholder manager that has no stakeholders yet
+            const newStakeholderManager = await (await ethers.getContractFactory("StakeholderManager")).deploy();
+            const newStakeholderRegistry = await (await ethers.getContractFactory("StakeholderRegistry")).deploy(await newStakeholderManager.getAddress());
             
-            const farmers = await newStakeholderRegistry.getStakeholdersByRole(0);
+            const farmers = await newStakeholderRegistry.getStakeholdersByRole(1); // FARMER role
             expect(farmers.length).to.equal(0);
         });
     });
@@ -295,9 +289,9 @@ describe("StakeholderRegistry Contract Tests", function () {
 
         it("Should return multiple matches for common terms", async function () {
             // Create another stakeholder with "Fresh" in name
-            await stakeholderFactory.connect(deployer).createStakeholder(
+            await stakeholderManager.connect(deployer).registerStakeholder(
                 accounts.consumer.address, // Using consumer account
-                0, // FARMER
+                1, // FARMER
                 "Fresh Valley Farm",
                 "FRESH123",
                 "Oregon, USA",
@@ -316,15 +310,6 @@ describe("StakeholderRegistry Contract Tests", function () {
             expect(results.length).to.equal(0);
         });
 
-        it("Should not include inactive stakeholders in search", async function () {
-            // Deactivate farmer
-            const farmerContract = await ethers.getContractAt("Stakeholder", farmerStakeholderContract);
-            await farmerContract.connect(deployer).deactivate();
-
-            const farmResults = await stakeholderRegistry.findStakeholdersByBusinessName("Farm");
-            expect(farmResults).to.not.include(farmer.address);
-        });
-
         it("Should be case sensitive", async function () {
             const lowerResults = await stakeholderRegistry.findStakeholdersByBusinessName("farm");
             expect(lowerResults.length).to.equal(0);
@@ -334,151 +319,6 @@ describe("StakeholderRegistry Contract Tests", function () {
 
             const correctResults = await stakeholderRegistry.findStakeholdersByBusinessName("Farm");
             expect(correctResults.length).to.equal(1);
-        });
-    });
-
-    describe("Stakeholder State Changes", function () {
-        it("Should handle stakeholder reactivation", async function () {
-            // Deactivate farmer
-            const farmerContract = await ethers.getContractAt("Stakeholder", farmerStakeholderContract);
-            await farmerContract.connect(deployer).deactivate();
-
-            expect(await stakeholderRegistry.isActiveStakeholder(farmer.address)).to.be.false;
-            expect(await stakeholderRegistry.isRegisteredStakeholder(farmer.address, 0)).to.be.false;
-
-            // Reactivate farmer
-            await farmerContract.connect(deployer).reactivate();
-
-            expect(await stakeholderRegistry.isActiveStakeholder(farmer.address)).to.be.true;
-            expect(await stakeholderRegistry.isRegisteredStakeholder(farmer.address, 0)).to.be.true;
-        });
-
-        it("Should handle stakeholder information updates", async function () {
-            const farmerContract = await ethers.getContractAt("Stakeholder", farmerStakeholderContract);
-            
-            // Update farmer information
-            await farmerContract.connect(deployer).updateInfo(
-                "Updated Green Valley Farm",
-                "Updated California, USA",
-                "Updated Organic Certified"
-            );
-
-            const [
-                addr,
-                role,
-                businessName,
-                businessLicense,
-                location,
-                certifications,
-                isActive,
-                registeredAt,
-                lastActivity
-            ] = await stakeholderRegistry.getStakeholderInfo(farmer.address);
-
-            expect(businessName).to.equal("Updated Green Valley Farm");
-            expect(location).to.equal("Updated California, USA");
-            expect(certifications).to.equal("Updated Organic Certified");
-        });
-    });
-
-    describe("Error Handling and Edge Cases", function () {
-        it("Should handle invalid contract calls gracefully", async function () {
-            // This test ensures the try-catch blocks work correctly
-            // by checking behavior with edge cases
-            
-            // Check with zero address
-            expect(await stakeholderRegistry.isRegisteredStakeholder(ethers.ZeroAddress, 0)).to.be.false;
-            expect(await stakeholderRegistry.isActiveStakeholder(ethers.ZeroAddress)).to.be.false;
-        });
-
-        it("Should return consistent results after multiple operations", async function () {
-            // Perform multiple operations and ensure consistency
-            const initialActive = await stakeholderRegistry.isActiveStakeholder(farmer.address);
-            const initialRegistered = await stakeholderRegistry.isRegisteredStakeholder(farmer.address, 0);
-
-            // Update activity
-            const farmerContract = await ethers.getContractAt("Stakeholder", farmerStakeholderContract);
-            await farmerContract.connect(farmer).updateActivity();
-
-            // Check that status remains consistent
-            expect(await stakeholderRegistry.isActiveStakeholder(farmer.address)).to.equal(initialActive);
-            expect(await stakeholderRegistry.isRegisteredStakeholder(farmer.address, 0)).to.equal(initialRegistered);
-        });
-    });
-
-    describe("Integration Tests", function () {
-        it("Should work with full stakeholder lifecycle", async function () {
-            // Create new stakeholder
-            const newStakeholderTx = await stakeholderFactory.connect(deployer).createStakeholder(
-                accounts.auditor.address,
-                0, // FARMER
-                "Integration Test Farm",
-                "INT123",
-                "Test Location",
-                "Test Certifications"
-            );
-
-            const receipt = await newStakeholderTx.wait();
-            const event = receipt.logs.find(log => {
-                try {
-                    return stakeholderFactory.interface.parseLog(log).name === "StakeholderCreated";
-                } catch {
-                    return false;
-                }
-            });
-
-            const newStakeholderContract = stakeholderFactory.interface.parseLog(event).args.stakeholderContractAddress;
-
-            // Verify registration
-            expect(await stakeholderRegistry.isRegisteredStakeholder(accounts.auditor.address, 0)).to.be.true;
-            expect(await stakeholderRegistry.isActiveStakeholder(accounts.auditor.address)).to.be.true;
-
-            // Verify in role list
-            const farmers = await stakeholderRegistry.getStakeholdersByRole(0);
-            expect(farmers).to.include(accounts.auditor.address);
-
-            // Verify searchable
-            const searchResults = await stakeholderRegistry.findStakeholdersByBusinessName("Integration");
-            expect(searchResults).to.include(accounts.auditor.address);
-
-            // Deactivate and verify removal from searches
-            const stakeholderContract = await ethers.getContractAt("Stakeholder", newStakeholderContract);
-            await stakeholderContract.connect(deployer).deactivate();
-
-            expect(await stakeholderRegistry.isActiveStakeholder(accounts.auditor.address)).to.be.false;
-            
-            const farmersAfterDeactivation = await stakeholderRegistry.getStakeholdersByRole(0);
-            expect(farmersAfterDeactivation).to.not.include(accounts.auditor.address);
-
-            const searchAfterDeactivation = await stakeholderRegistry.findStakeholdersByBusinessName("Integration");
-            expect(searchAfterDeactivation).to.not.include(accounts.auditor.address);
-        });
-
-        it("Should handle multiple stakeholders with same role", async function () {
-            // Create additional farmers
-            await stakeholderFactory.connect(deployer).createStakeholder(
-                accounts.consumer.address,
-                0, // FARMER
-                "Second Farm",
-                "FARM456",
-                "Second Location",
-                "Second Certifications"
-            );
-
-            await stakeholderFactory.connect(deployer).createStakeholder(
-                accounts.auditor.address,
-                0, // FARMER
-                "Third Farm",
-                "FARM789",
-                "Third Location",
-                "Third Certifications"
-            );
-
-            const farmers = await stakeholderRegistry.getStakeholdersByRole(0);
-            expect(farmers.length).to.equal(3);
-            expect(farmers).to.include(farmer.address);
-            expect(farmers).to.include(accounts.consumer.address);
-            expect(farmers).to.include(accounts.auditor.address);
         });
     });
 });

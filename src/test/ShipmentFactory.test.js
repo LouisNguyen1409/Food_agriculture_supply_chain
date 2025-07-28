@@ -6,31 +6,31 @@ describe("ShipmentFactory Contract Tests", function () {
     let testHelpers;
     let shipmentFactory;
     let productFactory;
-    let stakeholderFactory;
     let registry;
     let stakeholderRegistry;
     let accounts;
     let deployer, farmer, processor, distributor, retailer, unauthorized;
     let oracleFeeds;
     let productAddress;
-
+    let stakeholderManager;
     beforeEach(async function () {
         testHelpers = new TestHelpers();
         accounts = await testHelpers.setup();
         ({ deployer, farmer, processor, distributor, retailer, unauthorized } = accounts);
 
-        // Deploy dependencies in correct order
-        const Registry = await ethers.getContractFactory("Registry");
-        registry = await Registry.deploy();
-        await registry.waitForDeployment();
-        
+        // Deploy StakeholderManager
+        const StakeholderManager = await ethers.getContractFactory("StakeholderManager");
+        stakeholderManager = await StakeholderManager.deploy();
+        await stakeholderManager.waitForDeployment();
+
         const StakeholderRegistry = await ethers.getContractFactory("StakeholderRegistry");
-        stakeholderRegistry = await StakeholderRegistry.deploy(await registry.getAddress());
+        stakeholderRegistry = await StakeholderRegistry.deploy(await stakeholderManager.getAddress());
         await stakeholderRegistry.waitForDeployment();
         
-        const StakeholderFactory = await ethers.getContractFactory("StakeholderFactory");
-        stakeholderFactory = await StakeholderFactory.deploy(await registry.getAddress());
-        await stakeholderFactory.waitForDeployment();
+        // Deploy Registry contract first
+        const Registry = await ethers.getContractFactory("Registry");
+        registry = await Registry.deploy(await stakeholderManager.getAddress());
+        await registry.waitForDeployment();
         
         oracleFeeds = await testHelpers.deployMockOracleFeeds();
 
@@ -55,36 +55,36 @@ describe("ShipmentFactory Contract Tests", function () {
         await shipmentFactory.waitForDeployment();
 
         // Register stakeholders
-        await stakeholderFactory.connect(deployer).createStakeholder(
+        await stakeholderManager.connect(deployer).registerStakeholder(
             farmer.address,
-            0, // FARMER
+            1, // FARMER
             "Green Valley Farm",
             "FARM123",
             "California, USA",
             "Organic Certified"
         );
 
-        await stakeholderFactory.connect(deployer).createStakeholder(
+        await stakeholderManager.connect(deployer).registerStakeholder(
             processor.address,
-            1, // PROCESSOR
+            2, // PROCESSOR
             "Fresh Processing Co",
             "PROC123",
             "Texas, USA",
             "FDA Approved"
         );
 
-        await stakeholderFactory.connect(deployer).createStakeholder(
+        await stakeholderManager.connect(deployer).registerStakeholder(
             distributor.address,
-            3, // DISTRIBUTOR (corrected from 2 to 3)
+            4, // DISTRIBUTOR
             "Supply Chain Inc",
             "DIST456",
             "Los Angeles, USA",
             "ISO 9001 Certified"
         );
 
-        await stakeholderFactory.connect(deployer).createStakeholder(
+        await stakeholderManager.connect(deployer).registerStakeholder(
             retailer.address,
-            2, // RETAILER (corrected from 3 to 2)
+            3, // RETAILER
             "Fresh Market",
             "RET789",
             "New York, USA",
@@ -126,13 +126,9 @@ describe("ShipmentFactory Contract Tests", function () {
         it("Should verify stakeholder registration", async function () {
             const isDistributorRegistered = await stakeholderRegistry.isRegisteredStakeholder(
                 distributor.address,
-                3 // DISTRIBUTOR role (corrected from 2 to 3)
+                4 // DISTRIBUTOR role
             );
             expect(isDistributorRegistered).to.be.true;
-
-            // Also check the stakeholder contract exists
-            const stakeholderContract = await registry.getStakeholderByWallet(distributor.address);
-            expect(stakeholderContract).to.not.equal(ethers.ZeroAddress);
             
             // Check that the ShipmentFactory's stakeholderRegistry is the same
             const shipmentFactoryStakeholderRegistry = await shipmentFactory.stakeholderRegistry();
@@ -142,7 +138,7 @@ describe("ShipmentFactory Contract Tests", function () {
             const stakeholderRegistryFromFactory = await ethers.getContractAt("StakeholderRegistry", shipmentFactoryStakeholderRegistry);
             const isDistributorRegisteredViaFactory = await stakeholderRegistryFromFactory.isRegisteredStakeholder(
                 distributor.address,
-                3 // DISTRIBUTOR role (corrected from 2 to 3)
+                4 // DISTRIBUTOR role
             );
             expect(isDistributorRegisteredViaFactory).to.be.true;
         });

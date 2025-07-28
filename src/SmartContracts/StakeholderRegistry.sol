@@ -38,13 +38,10 @@ contract StakeholderRegistry {
             return false;
         }
 
-        try stakeholderManager.getStakeholderInfo(_stakeholderAddress) returns (
-            StakeholderManager.StakeholderInfo memory info
-        ) {
-            return info.isActive;
-        } catch {
-            return false;
-        }
+        // Use the public stakeholders mapping directly to avoid permission issues
+        (,,,,,, bool isActive,,) = stakeholderManager.stakeholders(_stakeholderAddress);
+        
+        return isActive;
     }
 
     /**
@@ -81,33 +78,8 @@ contract StakeholderRegistry {
             );
         }
 
-        try stakeholderManager.getStakeholderInfo(_stakeholderAddress) returns (
-            StakeholderManager.StakeholderInfo memory info
-        ) {
-            return (
-                info.stakeholderAddress,
-                info.role,
-                info.businessName,
-                info.businessLicense,
-                info.location,
-                info.certifications,
-                info.isActive,
-                info.registeredAt,
-                info.lastActivity
-            );
-        } catch {
-            return (
-                address(0),
-                StakeholderManager.StakeholderRole.NONE,
-                "",
-                "",
-                "",
-                "",
-                false,
-                0,
-                0
-            );
-        }
+        // Use the public stakeholders mapping directly to avoid permission issues
+        return stakeholderManager.stakeholders(_stakeholderAddress);
     }
 
     /**
@@ -116,7 +88,30 @@ contract StakeholderRegistry {
     function getStakeholdersByRole(
         StakeholderManager.StakeholderRole _role
     ) public view returns (address[] memory) {
-        return stakeholderManager.getStakeholdersByRole(_role);
+        // Get total number of stakeholders to size our temporary array
+        uint256 totalStakeholders = stakeholderManager.totalStakeholders();
+        address[] memory filtered = new address[](totalStakeholders);
+        uint256 count = 0;
+
+        // Iterate through all stakeholders using the public allStakeholders array
+        for (uint256 i = 0; i < totalStakeholders; i++) {
+            address stakeholderAddr = stakeholderManager.allStakeholders(i);
+            if (stakeholderManager.isRegistered(stakeholderAddr)) {
+                (, StakeholderManager.StakeholderRole role,,,,,bool isActive,,) = stakeholderManager.stakeholders(stakeholderAddr);
+                if (role == _role && isActive) {
+                    filtered[count] = stakeholderAddr;
+                    count++;
+                }
+            }
+        }
+
+        // Resize array to actual count
+        address[] memory result = new address[](count);
+        for (uint256 i = 0; i < count; i++) {
+            result[i] = filtered[i];
+        }
+
+        return result;
     }
 
     /**
@@ -136,6 +131,59 @@ contract StakeholderRegistry {
     function findStakeholdersByBusinessName(
         string memory _partialName
     ) external view returns (address[] memory) {
-        return stakeholderManager.searchByBusinessName(_partialName);
+        uint256 totalStakeholders = stakeholderManager.totalStakeholders();
+        address[] memory matches = new address[](totalStakeholders);
+        uint256 count = 0;
+        bytes memory partialNameBytes = bytes(_partialName);
+
+        for (uint256 i = 0; i < totalStakeholders; i++) {
+            address stakeholderAddr = stakeholderManager.allStakeholders(i);
+            if (stakeholderManager.isRegistered(stakeholderAddr)) {
+                (,, string memory businessName,,,, bool isActive,,) = stakeholderManager.stakeholders(stakeholderAddr);
+                if (isActive && _contains(bytes(businessName), partialNameBytes)) {
+                    matches[count] = stakeholderAddr;
+                    count++;
+                }
+            }
+        }
+
+        // Resize array
+        address[] memory result = new address[](count);
+        for (uint256 i = 0; i < count; i++) {
+            result[i] = matches[i];
+        }
+
+        return result;
+    }
+
+    /**
+     * @dev Helper function to check if haystack contains needle (case-sensitive)
+     */
+    function _contains(
+        bytes memory haystack,
+        bytes memory needle
+    ) internal pure returns (bool) {
+        if (needle.length > haystack.length) return false;
+
+        for (uint256 i = 0; i <= haystack.length - needle.length; i++) {
+            bool found = true;
+            for (uint256 j = 0; j < needle.length; j++) {
+                if (haystack[i + j] != needle[j]) {
+                    found = false;
+                    break;
+                }
+            }
+            if (found) return true;
+        }
+        return false;
+    }
+
+    /**
+     * @dev Get stakeholder address by business license
+     */
+    function getStakeholderByLicense(
+        string memory _license
+    ) external view returns (address) {
+        return stakeholderManager.licenseToAddress(_license);
     }
 }

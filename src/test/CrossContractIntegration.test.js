@@ -9,7 +9,7 @@ async function getBlockTimestamp(tx) {
 }
 
 describe("Cross-Contract Integration Tests (Factory/Registry Architecture)", function () {
-    let registry, stakeholderFactory, productFactory, shipmentFactory, stakeholderRegistry;
+    let registry, productFactory, shipmentFactory, stakeholderRegistry, stakeholderManager;
     let accounts;
     let deployer, admin, farmer, processor, distributor, retailer, consumer, auditor, unauthorized;
 
@@ -17,19 +17,19 @@ describe("Cross-Contract Integration Tests (Factory/Registry Architecture)", fun
         accounts = await ethers.getSigners();
         [deployer, admin, farmer, processor, distributor, retailer, consumer, auditor, unauthorized] = accounts;
 
+        // Deploy StakeholderManager
+        const StakeholderManager = await ethers.getContractFactory("StakeholderManager");
+        stakeholderManager = await StakeholderManager.deploy();
+        await stakeholderManager.waitForDeployment();
+
         // Deploy Registry
         const Registry = await ethers.getContractFactory("Registry");
-        registry = await Registry.deploy();
+        registry = await Registry.deploy(await stakeholderManager.getAddress());
         await registry.waitForDeployment();
-
-        // Deploy StakeholderFactory
-        const StakeholderFactory = await ethers.getContractFactory("StakeholderFactory");
-        stakeholderFactory = await StakeholderFactory.deploy(await registry.getAddress());
-        await stakeholderFactory.waitForDeployment();
 
         // Deploy StakeholderRegistry
         const StakeholderRegistry = await ethers.getContractFactory("StakeholderRegistry");
-        stakeholderRegistry = await StakeholderRegistry.deploy(await registry.getAddress());
+        stakeholderRegistry = await StakeholderRegistry.deploy(await stakeholderManager.getAddress());
         await stakeholderRegistry.waitForDeployment();
 
         // Deploy ProductFactory (mock oracle feeds as zero address)
@@ -53,18 +53,18 @@ describe("Cross-Contract Integration Tests (Factory/Registry Architecture)", fun
         );
         await shipmentFactory.waitForDeployment();
 
-        // Register stakeholders using StakeholderFactory (admin only)
-        await stakeholderFactory.connect(deployer).createStakeholder(
-            farmer.address, 0, "Green Farm Co", "FARM-001", "Iowa, USA", "Organic Certified"
+        // Register stakeholders directly using StakeholderManager (admin only)
+        await stakeholderManager.connect(deployer).registerStakeholder(
+            farmer.address, 1, "Green Farm Co", "FARM-001", "Iowa, USA", "Organic Certified"
         );
-        await stakeholderFactory.connect(deployer).createStakeholder(
-            processor.address, 1, "Fresh Processing Ltd", "PROC-001", "California, USA", "FDA Approved"
+        await stakeholderManager.connect(deployer).registerStakeholder(
+            processor.address, 2, "Fresh Processing Ltd", "PROC-001", "California, USA", "FDA Approved"
         );
-        await stakeholderFactory.connect(deployer).createStakeholder(
-            retailer.address, 2, "Super Market Chain", "RETAIL-001", "New York, USA", "Food Safety Certified"
+        await stakeholderManager.connect(deployer).registerStakeholder(
+            retailer.address, 3, "Super Market Chain", "RETAIL-001", "New York, USA", "Food Safety Certified"
         );
-        await stakeholderFactory.connect(deployer).createStakeholder(
-            distributor.address, 3, "Quick Distribution", "DIST-001", "Texas, USA", "Cold Chain Certified"
+        await stakeholderManager.connect(deployer).registerStakeholder(
+            distributor.address, 4, "Quick Distribution", "DIST-001", "Texas, USA", "Cold Chain Certified"
         );
     });
 
@@ -125,14 +125,14 @@ describe("Cross-Contract Integration Tests (Factory/Registry Architecture)", fun
             // Check farmer is registered with correct role
             const isFarmerRegistered = await stakeholderRegistry.isRegisteredStakeholder(
                 farmer.address, 
-                0 // FARMER role
+                1 // FARMER role
             );
             expect(isFarmerRegistered).to.be.true;
 
             // Check unauthorized is not registered
             const isUnauthorizedRegistered = await stakeholderRegistry.isRegisteredStakeholder(
                 unauthorized.address, 
-                0 // FARMER role
+                1 // FARMER role
             );
             expect(isUnauthorizedRegistered).to.be.false;
         });
@@ -372,7 +372,7 @@ describe("Cross-Contract Integration Tests (Factory/Registry Architecture)", fun
         it("Should prevent unauthorized access to contract functions", async function () {
             // Unauthorized user tries to use admin functions
             await expect(
-                stakeholderFactory.connect(unauthorized).createStakeholder(
+                stakeholderManager.connect(unauthorized).registerStakeholder(
                     unauthorized.address, 
                     0, 
                     "Unauthorized Biz", 

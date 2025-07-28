@@ -2,23 +2,24 @@ const { expect } = require("chai");
 const { ethers } = require("hardhat");
 
 describe("Registry and Product Contract Integration Tests", function () {
-    let registry, stakeholderRegistry, stakeholderFactory, productFactory;
+    let registry, stakeholderRegistry, productFactory, stakeholderManager;
     let deployer, farmer, processor, distributor, retailer, consumer, unauthorized;
 
     beforeEach(async function () {
         [deployer, farmer, processor, distributor, retailer, consumer, unauthorized] = await ethers.getSigners();
 
-        // Deploy Registry contract
-        const Registry = await ethers.getContractFactory("Registry");
-        registry = await Registry.deploy();
+        // Deploy StakeholderManager
+        const StakeholderManager = await ethers.getContractFactory("StakeholderManager");
+        stakeholderManager = await StakeholderManager.deploy();
+        await stakeholderManager.waitForDeployment();
 
         // Deploy StakeholderRegistry
         const StakeholderRegistry = await ethers.getContractFactory("StakeholderRegistry");
-        stakeholderRegistry = await StakeholderRegistry.deploy(await registry.getAddress());
+        stakeholderRegistry = await StakeholderRegistry.deploy(await stakeholderManager.getAddress());
 
-        // Deploy StakeholderFactory
-        const StakeholderFactory = await ethers.getContractFactory("StakeholderFactory");
-        stakeholderFactory = await StakeholderFactory.deploy(await registry.getAddress());
+        // Deploy Registry contract
+        const Registry = await ethers.getContractFactory("Registry");
+        registry = await Registry.deploy(await stakeholderManager.getAddress());
 
         // Deploy ProductFactory
         const ProductFactory = await ethers.getContractFactory("ProductFactory");
@@ -32,37 +33,37 @@ describe("Registry and Product Contract Integration Tests", function () {
             ethers.ZeroAddress  // priceFeed
         );
 
-        // First test - register stakeholders
-        await stakeholderFactory.connect(deployer).createStakeholder(
+        // First test - register stakeholders directly
+        await stakeholderManager.connect(deployer).registerStakeholder(
             farmer.address, 
-            0, // FARMER role
+            1, // FARMER role
             "Green Valley Farm", 
             "FARM_" + Math.random().toString(36).substring(2, 11), 
             "California", 
             "Organic Certified"
         );
         
-        await stakeholderFactory.connect(deployer).createStakeholder(
+        await stakeholderManager.connect(deployer).registerStakeholder(
             processor.address, 
-            1, // PROCESSOR role
+            2, // PROCESSOR role
             "Fresh Processing Co", 
             "PROC_" + Math.random().toString(36).substring(2, 11), 
             "Texas", 
             "FDA Approved"
         );
         
-        await stakeholderFactory.connect(deployer).createStakeholder(
+        await stakeholderManager.connect(deployer).registerStakeholder(
             distributor.address, 
-            3, // DISTRIBUTOR role
+            4, // DISTRIBUTOR role
             "Supply Chain Inc", 
             "DIST_" + Math.random().toString(36).substring(2, 11), 
             "Illinois", 
             "Logistics Certified"
         );
         
-        await stakeholderFactory.connect(deployer).createStakeholder(
+        await stakeholderManager.connect(deployer).registerStakeholder(
             retailer.address, 
-            2, // RETAILER role
+            3, // RETAILER role
             "Fresh Market", 
             "RET_" + Math.random().toString(36).substring(2, 11), 
             "New York", 
@@ -74,13 +75,12 @@ describe("Registry and Product Contract Integration Tests", function () {
         it("Should deploy all contracts successfully", async function () {
             expect(await registry.getAddress()).to.not.equal(ethers.ZeroAddress);
             expect(await stakeholderRegistry.getAddress()).to.not.equal(ethers.ZeroAddress);
-            expect(await stakeholderFactory.getAddress()).to.not.equal(ethers.ZeroAddress);
             expect(await productFactory.getAddress()).to.not.equal(ethers.ZeroAddress);
         });
 
         it("Should register a stakeholder successfully", async function () {
-            const totalStakeholders = await registry.getAllStakeholders();
-            expect(totalStakeholders.length).to.be.at.least(1);
+            const totalStakeholders = await stakeholderManager.totalStakeholders();
+            expect(totalStakeholders).to.be.at.least(1);
         });
     });
 
@@ -424,10 +424,11 @@ describe("Registry and Product Contract Integration Tests", function () {
         });
 
         it("Should track stakeholder registrations", async function () {
-            const allStakeholders = await registry.getAllStakeholders();
-            expect(allStakeholders.length).to.be.at.least(4); // farmer, processor, distributor, retailer
+            const totalStakeholders = await stakeholderManager.totalStakeholders();
+            console.log("Total stakeholders:", totalStakeholders.toString());
+            expect(totalStakeholders).to.be.at.least(4); // farmer, processor, distributor, retailer
 
-            const farmers = await registry.getStakeholdersByRole(0); // FARMER role
+            const farmers = await stakeholderManager.getStakeholdersByRole(1); // FARMER role - use StakeholderManager directly
             expect(farmers.length).to.be.at.least(1);
         });
     });

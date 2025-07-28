@@ -5,33 +5,32 @@ const { TestHelpers } = require("./helpers/testHelpers");
 describe("ProductFactory", function () {
     let testHelpers;
     let productFactory;
-    let stakeholderFactory;
     let registry;
     let stakeholderRegistry;
     let accounts;
     let deployer, farmer, processor, unauthorized;
     let oracleFeeds;
-
+    let stakeholderManager;
     beforeEach(async function () {
         testHelpers = new TestHelpers();
         accounts = await testHelpers.setup();
         ({ deployer, farmer, processor, unauthorized } = accounts);
 
-        // Deploy dependencies in correct order
-        // First deploy Registry
+        // Deploy StakeholderManager
+        const StakeholderManager = await ethers.getContractFactory("StakeholderManager");
+        stakeholderManager = await StakeholderManager.deploy();
+        await stakeholderManager.waitForDeployment();
+
+        // Deploy Registry
         const Registry = await ethers.getContractFactory("Registry");
-        registry = await Registry.deploy();
+        registry = await Registry.deploy(await stakeholderManager.getAddress());
         await registry.waitForDeployment();
         
-        // Then deploy StakeholderRegistry with Registry address
+        // Deploy StakeholderRegistry
         const StakeholderRegistry = await ethers.getContractFactory("StakeholderRegistry");
-        stakeholderRegistry = await StakeholderRegistry.deploy(await registry.getAddress());
+        stakeholderRegistry = await StakeholderRegistry.deploy(await stakeholderManager.getAddress());
         await stakeholderRegistry.waitForDeployment();
         
-        // Deploy StakeholderFactory for creating stakeholders
-        const StakeholderFactory = await ethers.getContractFactory("StakeholderFactory");
-        stakeholderFactory = await StakeholderFactory.deploy(await registry.getAddress());
-        await stakeholderFactory.waitForDeployment();
         
         oracleFeeds = await testHelpers.deployMockOracleFeeds();
 
@@ -48,19 +47,19 @@ describe("ProductFactory", function () {
         );
         await productFactory.waitForDeployment();
 
-        // Create stakeholders using StakeholderFactory
-        await stakeholderFactory.connect(deployer).createStakeholder(
+        // Create stakeholders directly using StakeholderManager
+        await stakeholderManager.connect(deployer).registerStakeholder(
             farmer.address,
-            0, // FARMER
+            1, // FARMER
             "Green Farm Co",
             "FARM-001",
             "Iowa, USA",
             "Organic Certified"
         );
 
-        await stakeholderFactory.connect(deployer).createStakeholder(
+        await stakeholderManager.connect(deployer).registerStakeholder(
             processor.address,
-            1, // PROCESSOR
+            2, // PROCESSOR
             "Fresh Processing Ltd",
             "PROC-001",
             "California, USA",

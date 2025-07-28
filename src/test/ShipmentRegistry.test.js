@@ -7,7 +7,6 @@ describe("ShipmentRegistry Contract Tests", function () {
     let testHelpers;
     let registry;
     let stakeholderRegistry;
-    let stakeholderFactory;
     let productFactory;
     let shipmentFactory;
     let accounts;
@@ -15,26 +14,26 @@ describe("ShipmentRegistry Contract Tests", function () {
     let oracleFeeds;
     let productAddress;
     let shipmentAddress;
-
+    let stakeholderManager;
     beforeEach(async function () {
         testHelpers = new TestHelpers();
         accounts = await testHelpers.setup();
         ({ deployer, farmer, processor, distributor, retailer, consumer, unauthorized } = accounts);
 
-        // Deploy core registry first
-        const Registry = await ethers.getContractFactory("Registry");
-        registry = await Registry.deploy();
-        await registry.waitForDeployment();
+        // Deploy StakeholderManager
+        const StakeholderManager = await ethers.getContractFactory("StakeholderManager");
+        stakeholderManager = await StakeholderManager.deploy();
+        await stakeholderManager.waitForDeployment();
 
         // Deploy stakeholder registry
         const StakeholderRegistry = await ethers.getContractFactory("StakeholderRegistry");
-        stakeholderRegistry = await StakeholderRegistry.deploy(await registry.getAddress());
+        stakeholderRegistry = await StakeholderRegistry.deploy(await stakeholderManager.getAddress());
         await stakeholderRegistry.waitForDeployment();
 
-        // Deploy stakeholder factory
-        const StakeholderFactory = await ethers.getContractFactory("StakeholderFactory");
-        stakeholderFactory = await StakeholderFactory.deploy(await registry.getAddress());
-        await stakeholderFactory.waitForDeployment();
+        // Deploy Registry contract
+        const Registry = await ethers.getContractFactory("Registry");
+        registry = await Registry.deploy(await stakeholderManager.getAddress());
+        await registry.waitForDeployment();
 
         // Deploy mock oracle feeds
         oracleFeeds = await testHelpers.deployMockOracleFeeds();
@@ -61,36 +60,36 @@ describe("ShipmentRegistry Contract Tests", function () {
         await shipmentFactory.waitForDeployment();
 
         // Register stakeholders
-        await stakeholderFactory.connect(deployer).createStakeholder(
+        await stakeholderManager.connect(deployer).registerStakeholder(
             farmer.address,
-            0, // FARMER
+            1, // FARMER
             "Green Valley Farm",
             "FARM123",
             "California, USA",
             "Organic Certified"
         );
 
-        await stakeholderFactory.connect(deployer).createStakeholder(
+        await stakeholderManager.connect(deployer).registerStakeholder(
             processor.address,
-            1, // PROCESSOR
+            2, // PROCESSOR
             "Fresh Processing Co",
             "PROC123",
             "Texas, USA",
             "FDA Approved"
         );
 
-        await stakeholderFactory.connect(deployer).createStakeholder(
+        await stakeholderManager.connect(deployer).registerStakeholder(
             distributor.address,
-            3, // DISTRIBUTOR
+            4, // DISTRIBUTOR
             "Supply Chain Inc",
             "DIST456",
             "Los Angeles, USA",
             "ISO 9001 Certified"
         );
 
-        await stakeholderFactory.connect(deployer).createStakeholder(
+        await stakeholderManager.connect(deployer).registerStakeholder(
             retailer.address,
-            2, // RETAILER
+            3, // RETAILER
             "Fresh Market",
             "RET789",
             "New York, USA",
@@ -156,11 +155,12 @@ describe("ShipmentRegistry Contract Tests", function () {
         it("Should initialize with empty arrays", async function () {
             const products = await registry.getAllProducts();
             const shipments = await registry.getAllShipments();
-            const stakeholders = await registry.getAllStakeholders();
+            // Check stakeholders through StakeholderManager instead
+            const stakeholderCount = await stakeholderManager.totalStakeholders();
 
             expect(products.length).to.equal(1); // One product created in beforeEach
             expect(shipments.length).to.equal(1); // One shipment created in beforeEach
-            expect(stakeholders.length).to.equal(4); // Four stakeholders created in beforeEach
+            expect(stakeholderCount).to.equal(4); // Four stakeholders created in beforeEach
         });
     });
 

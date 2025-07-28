@@ -8,7 +8,6 @@ describe("PublicVerification Contract Extended Tests", function () {
     let publicVerification;
     let registry;
     let stakeholderRegistry;
-    let stakeholderFactory;
     let productFactory;
     let shipmentFactory;
     let accounts;
@@ -16,24 +15,26 @@ describe("PublicVerification Contract Extended Tests", function () {
     let oracleFeeds;
     let productAddress;
     let shipmentAddress;
+    let stakeholderManager;
 
     beforeEach(async function () {
         testHelpers = new TestHelpers();
         accounts = await testHelpers.setup();
         ({ deployer, farmer, processor, distributor, retailer, auditor, consumer, unauthorized } = accounts);
 
-        // Deploy core contracts
-        const Registry = await ethers.getContractFactory("Registry");
-        registry = await Registry.deploy();
-        await registry.waitForDeployment();
+        // Deploy StakeholderManager
+        const StakeholderManager = await ethers.getContractFactory("StakeholderManager");
+        stakeholderManager = await StakeholderManager.deploy();
+        await stakeholderManager.waitForDeployment();
 
         const StakeholderRegistry = await ethers.getContractFactory("StakeholderRegistry");
-        stakeholderRegistry = await StakeholderRegistry.deploy(await registry.getAddress());
+        stakeholderRegistry = await StakeholderRegistry.deploy(await stakeholderManager.getAddress());
         await stakeholderRegistry.waitForDeployment();
 
-        const StakeholderFactory = await ethers.getContractFactory("StakeholderFactory");
-        stakeholderFactory = await StakeholderFactory.deploy(await registry.getAddress());
-        await stakeholderFactory.waitForDeployment();
+        // Deploy Registry contract
+        const Registry = await ethers.getContractFactory("Registry");
+        registry = await Registry.deploy(await stakeholderManager.getAddress());
+        await registry.waitForDeployment();
 
         oracleFeeds = await testHelpers.deployMockOracleFeeds();
 
@@ -65,20 +66,20 @@ describe("PublicVerification Contract Extended Tests", function () {
         await publicVerification.waitForDeployment();
 
         // Register stakeholders
-        await stakeholderFactory.connect(deployer).createStakeholder(
-            farmer.address, 0, "Test Farm", "FARM123", "CA", "Organic"
+        await stakeholderManager.connect(deployer).registerStakeholder(
+            farmer.address, 1, "Test Farm", "FARM123", "CA", "Organic"
         );
-        await stakeholderFactory.connect(deployer).createStakeholder(
-            processor.address, 1, "Test Processor", "PROC123", "TX", "FDA"
+        await stakeholderManager.connect(deployer).registerStakeholder(
+            processor.address, 2, "Test Processor", "PROC123", "TX", "FDA"
         );
-        await stakeholderFactory.connect(deployer).createStakeholder(
-            distributor.address, 3, "Test Distributor", "DIST123", "NY", "ISO"
+        await stakeholderManager.connect(deployer).registerStakeholder(
+            distributor.address, 4, "Test Distributor", "DIST123", "NY", "ISO"
         );
-        await stakeholderFactory.connect(deployer).createStakeholder(
-            retailer.address, 2, "Test Retailer", "RET123", "FL", "Quality"
+        await stakeholderManager.connect(deployer).registerStakeholder(
+            retailer.address, 3, "Test Retailer", "RET123", "FL", "Quality"
         );
-        await stakeholderFactory.connect(deployer).createStakeholder(
-            auditor.address, 0, "Audit Farm", "AUDIT123", "WA", "Certified" // Another farmer for testing
+        await stakeholderManager.connect(deployer).registerStakeholder(
+            auditor.address, 1, "Audit Farm", "AUDIT123", "WA", "Certified" // Another farmer for testing
         );
 
         // Create and advance product through all stages
@@ -146,9 +147,7 @@ describe("PublicVerification Contract Extended Tests", function () {
             const newProductAddress = productFactory.interface.parseLog(newProductEvent).args.productAddress;
 
             // Deactivate auditor (who created the product)
-            const auditorStakeholderContract = await registry.getStakeholderByWallet(auditor.address);
-            const auditorStakeholder = await ethers.getContractAt("Stakeholder", auditorStakeholderContract);
-            await auditorStakeholder.connect(deployer).deactivate();
+            await stakeholderManager.connect(deployer).deactivateStakeholder(auditor.address);
 
             const [isAuthentic, details] = await publicVerification.verifyProductAuthenticity.staticCall(newProductAddress);
             expect(isAuthentic).to.be.false;
@@ -157,9 +156,7 @@ describe("PublicVerification Contract Extended Tests", function () {
 
         it("Should handle product with invalid processor registration", async function () {
             // Deactivate processor
-            const processorStakeholderContract = await registry.getStakeholderByWallet(processor.address);
-            const processorStakeholder = await ethers.getContractAt("Stakeholder", processorStakeholderContract);
-            await processorStakeholder.connect(deployer).deactivate();
+            await stakeholderManager.connect(deployer).deactivateStakeholder(processor.address);
 
             const [isAuthentic, details] = await publicVerification.verifyProductAuthenticity.staticCall(productAddress);
             expect(isAuthentic).to.be.false;
@@ -168,9 +165,7 @@ describe("PublicVerification Contract Extended Tests", function () {
 
         it("Should handle product with invalid distributor registration", async function () {
             // Deactivate distributor
-            const distributorStakeholderContract = await registry.getStakeholderByWallet(distributor.address);
-            const distributorStakeholder = await ethers.getContractAt("Stakeholder", distributorStakeholderContract);
-            await distributorStakeholder.connect(deployer).deactivate();
+            await stakeholderManager.connect(deployer).deactivateStakeholder(distributor.address);
 
             const [isAuthentic, details] = await publicVerification.verifyProductAuthenticity.staticCall(productAddress);
             expect(isAuthentic).to.be.false;
@@ -179,9 +174,7 @@ describe("PublicVerification Contract Extended Tests", function () {
 
         it("Should handle product with invalid retailer registration", async function () {
             // Deactivate retailer
-            const retailerStakeholderContract = await registry.getStakeholderByWallet(retailer.address);
-            const retailerStakeholder = await ethers.getContractAt("Stakeholder", retailerStakeholderContract);
-            await retailerStakeholder.connect(deployer).deactivate();
+            await stakeholderManager.connect(deployer).deactivateStakeholder(retailer.address);
 
             const [isAuthentic, details] = await publicVerification.verifyProductAuthenticity.staticCall(productAddress);
             expect(isAuthentic).to.be.false;
@@ -448,10 +441,8 @@ describe("PublicVerification Contract Extended Tests", function () {
         });
 
         it("Should reject audit from inactive stakeholder", async function () {
-            // Deactivate farmer
-            const farmerStakeholderContract = await registry.getStakeholderByWallet(farmer.address);
-            const farmerStakeholder = await ethers.getContractAt("Stakeholder", farmerStakeholderContract);
-            await farmerStakeholder.connect(deployer).deactivate();
+            // Deactivate farmer first
+            await stakeholderManager.connect(deployer).deactivateStakeholder(farmer.address);
 
             await expect(
                 publicVerification.connect(farmer).performAudit(productAddress, "Inactive audit")

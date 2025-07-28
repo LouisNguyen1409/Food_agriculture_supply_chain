@@ -2,24 +2,25 @@ const { expect } = require("chai");
 const { ethers } = require("hardhat");
 
 describe("PublicVerification Contract Tests", function () {
-    let publicVerification, registry, stakeholderRegistry, stakeholderFactory, productFactory;
+    let publicVerification, registry, stakeholderRegistry, productFactory, stakeholderManager;
     let deployer, farmer, processor, distributor, retailer, auditor, consumer, unauthorized;
     let productAddress;
 
     beforeEach(async function () {
         [deployer, farmer, processor, distributor, retailer, auditor, consumer, unauthorized] = await ethers.getSigners();
 
-        // Deploy Registry contract
-        const Registry = await ethers.getContractFactory("Registry");
-        registry = await Registry.deploy();
+        // Deploy StakeholderManager
+        const StakeholderManager = await ethers.getContractFactory("StakeholderManager");
+        stakeholderManager = await StakeholderManager.deploy();
+        await stakeholderManager.waitForDeployment();
 
         // Deploy StakeholderRegistry
         const StakeholderRegistry = await ethers.getContractFactory("StakeholderRegistry");
-        stakeholderRegistry = await StakeholderRegistry.deploy(await registry.getAddress());
+        stakeholderRegistry = await StakeholderRegistry.deploy(await stakeholderManager.getAddress());
 
-        // Deploy StakeholderFactory
-        const StakeholderFactory = await ethers.getContractFactory("StakeholderFactory");
-        stakeholderFactory = await StakeholderFactory.deploy(await registry.getAddress());
+        // Deploy Registry contract
+        const Registry = await ethers.getContractFactory("Registry");
+        registry = await Registry.deploy(await stakeholderManager.getAddress());
 
         // Deploy ProductFactory
         const ProductFactory = await ethers.getContractFactory("ProductFactory");
@@ -40,46 +41,46 @@ describe("PublicVerification Contract Tests", function () {
             await registry.getAddress()
         );
 
-        // Register stakeholders
-        await stakeholderFactory.connect(deployer).createStakeholder(
+        // Register stakeholders directly
+        await stakeholderManager.connect(deployer).registerStakeholder(
             farmer.address, 
-            0, // FARMER role
+            1, // FARMER role
             "Green Valley Farm", 
             "FARM_" + Math.random().toString(36).substring(2, 11), 
             "California", 
             "Organic Certified"
         );
         
-        await stakeholderFactory.connect(deployer).createStakeholder(
+        await stakeholderManager.connect(deployer).registerStakeholder(
             processor.address, 
-            1, // PROCESSOR role
+            2, // PROCESSOR role
             "Fresh Processing Co", 
             "PROC_" + Math.random().toString(36).substring(2, 11), 
             "Texas", 
             "FDA Approved"
         );
         
-        await stakeholderFactory.connect(deployer).createStakeholder(
+        await stakeholderManager.connect(deployer).registerStakeholder(
             distributor.address, 
-            3, // DISTRIBUTOR role
+            4, // DISTRIBUTOR role
             "Supply Chain Inc", 
             "DIST_" + Math.random().toString(36).substring(2, 11), 
             "Illinois", 
             "Logistics Certified"
         );
         
-        await stakeholderFactory.connect(deployer).createStakeholder(
+        await stakeholderManager.connect(deployer).registerStakeholder(
             retailer.address, 
-            2, // RETAILER role
+            3, // RETAILER role
             "Fresh Market", 
             "RET_" + Math.random().toString(36).substring(2, 11), 
             "New York", 
             "Retail Licensed"
         );
 
-        await stakeholderFactory.connect(deployer).createStakeholder(
+        await stakeholderManager.connect(deployer).registerStakeholder(
             auditor.address, 
-            0, // FARMER role (as auditor)
+            1, // FARMER role (as auditor)
             "Quality Auditor", 
             "AUDIT_" + Math.random().toString(36).substring(2, 11), 
             "Washington", 
