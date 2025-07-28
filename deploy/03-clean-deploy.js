@@ -107,16 +107,8 @@ module.exports = async ({ getNamedAccounts, deployments }) => {
         waitConfirmations: network.config.blockConfirmations || 1,
     })
 
-    // 4. Deploy StakeholderFactory (Updated to work with StakeholderManager)
-    log("🏭 Deploying StakeholderFactory...")
-    const stakeholderFactory = await deploy("StakeholderFactory", {
-        from: deployer,
-        args: [stakeholderManager.address],
-        log: true,
-        waitConfirmations: network.config.blockConfirmations || 1,
-    })
 
-    // 5. Deploy ProductFactory (with mock oracle feed addresses for local)
+    // 4. Deploy ProductFactory (with mock oracle feed addresses for local)
     log("🏭 Deploying ProductFactory...")
     const productFactory = await deploy("ProductFactory", {
         from: deployer,
@@ -133,7 +125,7 @@ module.exports = async ({ getNamedAccounts, deployments }) => {
         waitConfirmations: network.config.blockConfirmations || 1,
     })
 
-    // 6. Deploy ShipmentFactory
+    // 5. Deploy ShipmentFactory
     log("🚚 Deploying ShipmentFactory...")
     const shipmentFactory = await deploy("ShipmentFactory", {
         from: deployer,
@@ -142,7 +134,7 @@ module.exports = async ({ getNamedAccounts, deployments }) => {
         waitConfirmations: network.config.blockConfirmations || 1,
     })
 
-    // 7. Deploy FileStorageManager (use deployer as oracle operator for local)
+    // 6. Deploy FileStorageManager (use deployer as oracle operator for local)
     log("📁 Deploying FileStorageManager...")
     const fileStorageManager = await deploy("FileStorageManager", {
         from: deployer,
@@ -151,7 +143,7 @@ module.exports = async ({ getNamedAccounts, deployments }) => {
         waitConfirmations: network.config.blockConfirmations || 1,
     })
 
-    // 8. Register some example stakeholders for testing
+    // 7. Register some example stakeholders for testing
     log("\n📝 Registering example stakeholders...")
     
     const StakeholderRole = {
@@ -216,7 +208,6 @@ module.exports = async ({ getNamedAccounts, deployments }) => {
         await verify(stakeholderManager.address, [])
         await verify(registry.address, [stakeholderManager.address])
         await verify(stakeholderRegistry.address, [stakeholderManager.address])
-        await verify(stakeholderFactory.address, [stakeholderManager.address])
         await verify(productFactory.address, [
             stakeholderRegistry.address,
             registry.address,
@@ -241,7 +232,6 @@ module.exports = async ({ getNamedAccounts, deployments }) => {
     log(`StakeholderManager:   ${stakeholderManager.address}`)
     log(`Registry:             ${registry.address}`)
     log(`StakeholderRegistry:  ${stakeholderRegistry.address}`)
-    log(`StakeholderFactory:   ${stakeholderFactory.address}`)
     log(`ProductFactory:       ${productFactory.address}`)
     log(`ShipmentFactory:      ${shipmentFactory.address}`)
     log(`FileStorageManager:   ${fileStorageManager.address}`)
@@ -273,7 +263,6 @@ module.exports = async ({ getNamedAccounts, deployments }) => {
     log("\n🔗 Contract Dependencies:")
     log(`Registry → StakeholderManager: ${stakeholderManager.address}`)
     log(`StakeholderRegistry → StakeholderManager: ${stakeholderManager.address}`)
-    log(`StakeholderFactory → StakeholderManager: ${stakeholderManager.address}`)
     log(`ProductFactory → Mock Oracles: All deployed`)
     
     log("\n🚀 System ready for local development with mock oracles!")
