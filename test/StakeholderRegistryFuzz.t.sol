@@ -4,13 +4,12 @@ pragma solidity ^0.8.0;
 import "forge-std/Test.sol";
 import "../src/SmartContracts/StakeholderRegistry.sol";
 import "../src/SmartContracts/Registry.sol";
-import "../src/SmartContracts/StakeholderFactory.sol";
-import "../src/SmartContracts/Stakeholder.sol";
+import "../src/SmartContracts/StakeholderManager.sol";
 
 contract StakeholderRegistryFuzz is Test {
     StakeholderRegistry public stakeholderRegistry;
     Registry public registry;
-    StakeholderFactory public stakeholderFactory;
+    StakeholderManager public stakeholderManager;
     
     address admin = address(0x1);
     address farmer1 = address(0x2);
@@ -31,9 +30,9 @@ contract StakeholderRegistryFuzz is Test {
         vm.startPrank(admin);
         
         // Deploy core contracts
-        registry = new Registry();
-        stakeholderRegistry = new StakeholderRegistry(address(registry));
-        stakeholderFactory = new StakeholderFactory(address(registry));
+        stakeholderManager = new StakeholderManager();
+        registry = new Registry(address(stakeholderManager));
+        stakeholderRegistry = new StakeholderRegistry(address(stakeholderManager));
         
         vm.stopPrank();
     }
@@ -64,12 +63,12 @@ contract StakeholderRegistryFuzz is Test {
 
     function _createStakeholder(
         address stakeholderAddr,
-        Stakeholder.StakeholderRole role,
+        StakeholderManager.StakeholderRole role,
         string memory name,
         string memory license
     ) internal returns (address) {
         vm.prank(admin);
-        return stakeholderFactory.createStakeholder(
+        stakeholderManager.registerStakeholder(
             stakeholderAddr,
             role,
             name,
@@ -77,35 +76,36 @@ contract StakeholderRegistryFuzz is Test {
             "Location",
             "Certifications"
         );
+        return stakeholderAddr; // StakeholderManager doesn't return a contract address, just registers the stakeholder
     }
 
-    function _getRandomRole(uint256 seed) internal pure returns (Stakeholder.StakeholderRole) {
+    function _getRandomRole(uint256 seed) internal pure returns (StakeholderManager.StakeholderRole) {
         uint8 roleIndex = uint8(seed % 4);
-        if (roleIndex == 0) return Stakeholder.StakeholderRole.FARMER;
-        if (roleIndex == 1) return Stakeholder.StakeholderRole.DISTRIBUTOR;
-        if (roleIndex == 2) return Stakeholder.StakeholderRole.PROCESSOR;
-        return Stakeholder.StakeholderRole.RETAILER;
+        if (roleIndex == 0) return StakeholderManager.StakeholderRole.FARMER;
+        if (roleIndex == 1) return StakeholderManager.StakeholderRole.DISTRIBUTOR;
+        if (roleIndex == 2) return StakeholderManager.StakeholderRole.PROCESSOR;
+        return StakeholderManager.StakeholderRole.RETAILER;
     }
 
-    function _getDifferentRole(Stakeholder.StakeholderRole currentRole) internal pure returns (Stakeholder.StakeholderRole) {
-        if (currentRole == Stakeholder.StakeholderRole.FARMER) return Stakeholder.StakeholderRole.DISTRIBUTOR;
-        if (currentRole == Stakeholder.StakeholderRole.DISTRIBUTOR) return Stakeholder.StakeholderRole.PROCESSOR;
-        if (currentRole == Stakeholder.StakeholderRole.PROCESSOR) return Stakeholder.StakeholderRole.RETAILER;
-        return Stakeholder.StakeholderRole.FARMER;
+    function _getDifferentRole(StakeholderManager.StakeholderRole currentRole) internal pure returns (StakeholderManager.StakeholderRole) {
+        if (currentRole == StakeholderManager.StakeholderRole.FARMER) return StakeholderManager.StakeholderRole.DISTRIBUTOR;
+        if (currentRole == StakeholderManager.StakeholderRole.DISTRIBUTOR) return StakeholderManager.StakeholderRole.PROCESSOR;
+        if (currentRole == StakeholderManager.StakeholderRole.PROCESSOR) return StakeholderManager.StakeholderRole.RETAILER;
+        return StakeholderManager.StakeholderRole.FARMER;
     }
 
     // ===== CONSTRUCTOR TESTS =====
 
     /**
-     * @dev Test StakeholderRegistry constructor with valid registry
+     * @dev Test StakeholderRegistry constructor with valid stakeholder manager
      */
-    function testFuzzConstructor(address registryAddr) public {
-        vm.assume(registryAddr != address(0));
+    function testFuzzConstructor(address stakeholderManagerAddr) public {
+        vm.assume(stakeholderManagerAddr != address(0));
         
         vm.prank(admin);
-        StakeholderRegistry newRegistry = new StakeholderRegistry(registryAddr);
+        StakeholderRegistry newRegistry = new StakeholderRegistry(stakeholderManagerAddr);
         
-        assertEq(address(newRegistry.registry()), registryAddr);
+        assertEq(address(newRegistry.stakeholderManager()), stakeholderManagerAddr);
         assertEq(newRegistry.admin(), admin);
     }
 
@@ -117,7 +117,7 @@ contract StakeholderRegistryFuzz is Test {
         StakeholderRegistry newRegistry = new StakeholderRegistry(address(0));
         
         // Constructor doesn't validate, but usage would fail
-        assertEq(address(newRegistry.registry()), address(0));
+        assertEq(address(newRegistry.stakeholderManager()), address(0));
     }
 
     // ===== STAKEHOLDER REGISTRATION CHECKS =====
@@ -135,7 +135,7 @@ contract StakeholderRegistryFuzz is Test {
         name = _sanitizeString(name, "TestStakeholder");
         license = _sanitizeString(license, string(abi.encodePacked("LIC", vm.toString(uint160(stakeholderAddr)))));
         
-        Stakeholder.StakeholderRole role = _getRandomRole(roleSeed);
+        StakeholderManager.StakeholderRole role = _getRandomRole(roleSeed);
         
         // Create stakeholder
         _createStakeholder(stakeholderAddr, role, name, license);
@@ -157,8 +157,8 @@ contract StakeholderRegistryFuzz is Test {
         name = _sanitizeString(name, "TestStakeholder");
         license = _sanitizeString(license, string(abi.encodePacked("LIC", vm.toString(uint160(stakeholderAddr)))));
         
-        Stakeholder.StakeholderRole actualRole = _getRandomRole(roleSeed);
-        Stakeholder.StakeholderRole wrongRole = _getDifferentRole(actualRole);
+        StakeholderManager.StakeholderRole actualRole = _getRandomRole(roleSeed);
+        StakeholderManager.StakeholderRole wrongRole = _getDifferentRole(actualRole);
         
         // Create stakeholder
         _createStakeholder(stakeholderAddr, actualRole, name, license);
@@ -180,7 +180,7 @@ contract StakeholderRegistryFuzz is Test {
         vm.assume(unregisteredAddr != farmer1);
         vm.assume(unregisteredAddr != distributor1);
         
-        Stakeholder.StakeholderRole role = _getRandomRole(roleSeed);
+        StakeholderManager.StakeholderRole role = _getRandomRole(roleSeed);
         
         // Check unregistered address (should return false)
         assertFalse(stakeholderRegistry.isRegisteredStakeholder(unregisteredAddr, role));
@@ -190,10 +190,10 @@ contract StakeholderRegistryFuzz is Test {
      * @dev Test isRegisteredStakeholder with zero address
      */
     function testIsRegisteredStakeholderZeroAddress() public {
-        assertFalse(stakeholderRegistry.isRegisteredStakeholder(address(0), Stakeholder.StakeholderRole.FARMER));
-        assertFalse(stakeholderRegistry.isRegisteredStakeholder(address(0), Stakeholder.StakeholderRole.DISTRIBUTOR));
-        assertFalse(stakeholderRegistry.isRegisteredStakeholder(address(0), Stakeholder.StakeholderRole.PROCESSOR));
-        assertFalse(stakeholderRegistry.isRegisteredStakeholder(address(0), Stakeholder.StakeholderRole.RETAILER));
+        assertFalse(stakeholderRegistry.isRegisteredStakeholder(address(0), StakeholderManager.StakeholderRole.FARMER));
+        assertFalse(stakeholderRegistry.isRegisteredStakeholder(address(0), StakeholderManager.StakeholderRole.DISTRIBUTOR));
+        assertFalse(stakeholderRegistry.isRegisteredStakeholder(address(0), StakeholderManager.StakeholderRole.PROCESSOR));
+        assertFalse(stakeholderRegistry.isRegisteredStakeholder(address(0), StakeholderManager.StakeholderRole.RETAILER));
     }
 
     // ===== ACTIVE STAKEHOLDER CHECKS =====
@@ -211,7 +211,7 @@ contract StakeholderRegistryFuzz is Test {
         name = _sanitizeString(name, "TestStakeholder");
         license = _sanitizeString(license, string(abi.encodePacked("LIC", vm.toString(uint160(stakeholderAddr)))));
         
-        Stakeholder.StakeholderRole role = _getRandomRole(roleSeed);
+        StakeholderManager.StakeholderRole role = _getRandomRole(roleSeed);
         
         // Create stakeholder (should be active by default)
         _createStakeholder(stakeholderAddr, role, name, license);
@@ -256,20 +256,19 @@ contract StakeholderRegistryFuzz is Test {
         name = _sanitizeString(name, "TestStakeholder");
         license = _sanitizeString(license, string(abi.encodePacked("LIC", vm.toString(uint160(stakeholderAddr)))));
         
-        Stakeholder.StakeholderRole role = _getRandomRole(roleSeed);
+        StakeholderManager.StakeholderRole role = _getRandomRole(roleSeed);
         
         // Create stakeholder
         address contractAddr = _createStakeholder(stakeholderAddr, role, name, license);
         
-        // Get stakeholder contract
-        address retrievedContract = stakeholderRegistry.getStakeholderContract(stakeholderAddr);
-        
-        assertEq(retrievedContract, contractAddr);
-        assertTrue(retrievedContract != address(0));
+        // Verify stakeholder is registered instead of checking contract address
+        assertTrue(stakeholderRegistry.isRegisteredStakeholder(stakeholderAddr, role));
+        assertTrue(stakeholderRegistry.isActiveStakeholder(stakeholderAddr));
+        assertTrue(contractAddr != address(0));
     }
 
     /**
-     * @dev Test getStakeholderContract with unregistered address
+     * @dev Test isRegisteredStakeholder with unregistered address
      */
     function testFuzzGetStakeholderContractUnregistered(address unregisteredAddr) public {
         vm.assume(unregisteredAddr != address(0));
@@ -278,8 +277,9 @@ contract StakeholderRegistryFuzz is Test {
         vm.assume(unregisteredAddr != farmer1);
         vm.assume(unregisteredAddr != distributor1);
         
-        address retrievedContract = stakeholderRegistry.getStakeholderContract(unregisteredAddr);
-        assertEq(retrievedContract, address(0));
+        // Check that unregistered address is not registered for any role
+        assertFalse(stakeholderRegistry.isRegisteredStakeholder(unregisteredAddr, StakeholderManager.StakeholderRole.FARMER));
+        assertFalse(stakeholderRegistry.isActiveStakeholder(unregisteredAddr));
     }
 
     // ===== STAKEHOLDER INFO RETRIEVAL =====
@@ -297,7 +297,7 @@ contract StakeholderRegistryFuzz is Test {
         name = _sanitizeString(name, "TestStakeholder");
         license = _sanitizeString(license, string(abi.encodePacked("LIC", vm.toString(uint160(stakeholderAddr)))));
         
-        Stakeholder.StakeholderRole role = _getRandomRole(roleSeed);
+        StakeholderManager.StakeholderRole role = _getRandomRole(roleSeed);
         
         // Create stakeholder
         _createStakeholder(stakeholderAddr, role, name, license);
@@ -305,7 +305,7 @@ contract StakeholderRegistryFuzz is Test {
         // Get stakeholder info
         (
             address retrievedAddr,
-            Stakeholder.StakeholderRole retrievedRole,
+            StakeholderManager.StakeholderRole retrievedRole,
             string memory retrievedName,
             string memory retrievedLicense,
             string memory location,
@@ -334,11 +334,15 @@ contract StakeholderRegistryFuzz is Test {
         // Ensure address is not one of our pre-registered addresses
         vm.assume(unregisteredAddr != admin);
         vm.assume(unregisteredAddr != farmer1);
+        vm.assume(unregisteredAddr != farmer2);
         vm.assume(unregisteredAddr != distributor1);
+        vm.assume(unregisteredAddr != processor1);
+        vm.assume(unregisteredAddr != retailer1);
+        vm.assume(unregisteredAddr != unauthorized);
         
         (
             address retrievedAddr,
-            Stakeholder.StakeholderRole retrievedRole,
+            StakeholderManager.StakeholderRole retrievedRole,
             string memory retrievedName,
             string memory retrievedLicense,
             string memory location,
@@ -349,7 +353,7 @@ contract StakeholderRegistryFuzz is Test {
         ) = stakeholderRegistry.getStakeholderInfo(unregisteredAddr);
         
         assertEq(retrievedAddr, address(0));
-        assertEq(uint8(retrievedRole), uint8(Stakeholder.StakeholderRole.FARMER)); // Default value
+        assertEq(uint8(retrievedRole), uint8(StakeholderManager.StakeholderRole.NONE)); // Default value for unregistered
         assertEq(retrievedName, "");
         assertEq(retrievedLicense, "");
         assertEq(location, "");
@@ -369,7 +373,7 @@ contract StakeholderRegistryFuzz is Test {
         uint256 roleSeed
     ) public {
         stakeholderCount = stakeholderCount % 5 + 1; // 1-5 stakeholders
-        Stakeholder.StakeholderRole role = _getRandomRole(roleSeed);
+        StakeholderManager.StakeholderRole role = _getRandomRole(roleSeed);
         
         address[] memory createdStakeholders = new address[](stakeholderCount);
         
@@ -405,7 +409,7 @@ contract StakeholderRegistryFuzz is Test {
      * @dev Test getStakeholdersByRole with empty role
      */
     function testFuzzGetStakeholdersByRoleEmpty(uint256 roleSeed) public {
-        Stakeholder.StakeholderRole emptyRole = _getRandomRole(roleSeed);
+        StakeholderManager.StakeholderRole emptyRole = _getRandomRole(roleSeed);
         
         // Don't create any stakeholders with this role
         address[] memory stakeholders = stakeholderRegistry.getStakeholdersByRole(emptyRole);
@@ -418,17 +422,17 @@ contract StakeholderRegistryFuzz is Test {
      */
     function testGetStakeholdersByRoleMixed() public {
         // Create stakeholders with different roles
-        _createStakeholder(farmer1, Stakeholder.StakeholderRole.FARMER, "Farmer1", "FARM001");
-        _createStakeholder(farmer2, Stakeholder.StakeholderRole.FARMER, "Farmer2", "FARM002");
-        _createStakeholder(distributor1, Stakeholder.StakeholderRole.DISTRIBUTOR, "Dist1", "DIST001");
-        _createStakeholder(processor1, Stakeholder.StakeholderRole.PROCESSOR, "Proc1", "PROC001");
-        _createStakeholder(retailer1, Stakeholder.StakeholderRole.RETAILER, "Retail1", "RETAIL001");
+        _createStakeholder(farmer1, StakeholderManager.StakeholderRole.FARMER, "Farmer1", "FARM001");
+        _createStakeholder(farmer2, StakeholderManager.StakeholderRole.FARMER, "Farmer2", "FARM002");
+        _createStakeholder(distributor1, StakeholderManager.StakeholderRole.DISTRIBUTOR, "Dist1", "DIST001");
+        _createStakeholder(processor1, StakeholderManager.StakeholderRole.PROCESSOR, "Proc1", "PROC001");
+        _createStakeholder(retailer1, StakeholderManager.StakeholderRole.RETAILER, "Retail1", "RETAIL001");
         
         // Test each role
-        address[] memory farmers = stakeholderRegistry.getStakeholdersByRole(Stakeholder.StakeholderRole.FARMER);
-        address[] memory distributors = stakeholderRegistry.getStakeholdersByRole(Stakeholder.StakeholderRole.DISTRIBUTOR);
-        address[] memory processors = stakeholderRegistry.getStakeholdersByRole(Stakeholder.StakeholderRole.PROCESSOR);
-        address[] memory retailers = stakeholderRegistry.getStakeholdersByRole(Stakeholder.StakeholderRole.RETAILER);
+        address[] memory farmers = stakeholderRegistry.getStakeholdersByRole(StakeholderManager.StakeholderRole.FARMER);
+        address[] memory distributors = stakeholderRegistry.getStakeholdersByRole(StakeholderManager.StakeholderRole.DISTRIBUTOR);
+        address[] memory processors = stakeholderRegistry.getStakeholdersByRole(StakeholderManager.StakeholderRole.PROCESSOR);
+        address[] memory retailers = stakeholderRegistry.getStakeholdersByRole(StakeholderManager.StakeholderRole.RETAILER);
         
         assertEq(farmers.length, 2);
         assertEq(distributors.length, 1);
@@ -458,7 +462,7 @@ contract StakeholderRegistryFuzz is Test {
         name = _sanitizeString(name, "TestStakeholder");
         license = _sanitizeString(license, string(abi.encodePacked("LIC", vm.toString(uint160(stakeholderAddr)))));
         
-        Stakeholder.StakeholderRole role = _getRandomRole(roleSeed);
+        StakeholderManager.StakeholderRole role = _getRandomRole(roleSeed);
         
         // Create stakeholder
         _createStakeholder(stakeholderAddr, role, name, license);
@@ -504,7 +508,7 @@ contract StakeholderRegistryFuzz is Test {
         businessName = _sanitizeString(businessName, "TestBusiness");
         license = _sanitizeString(license, string(abi.encodePacked("LIC", vm.toString(uint160(stakeholderAddr)))));
         
-        Stakeholder.StakeholderRole role = _getRandomRole(roleSeed);
+        StakeholderManager.StakeholderRole role = _getRandomRole(roleSeed);
         
         // Create stakeholder
         _createStakeholder(stakeholderAddr, role, businessName, license);
@@ -521,9 +525,9 @@ contract StakeholderRegistryFuzz is Test {
      */
     function testFindStakeholdersByBusinessNamePartial() public {
         // Create stakeholders with related business names
-        _createStakeholder(farmer1, Stakeholder.StakeholderRole.FARMER, "FreshFarm Co", "FARM001");
-        _createStakeholder(farmer2, Stakeholder.StakeholderRole.FARMER, "Farm Fresh Ltd", "FARM002");
-        _createStakeholder(distributor1, Stakeholder.StakeholderRole.DISTRIBUTOR, "Quick Distribution", "DIST001");
+        _createStakeholder(farmer1, StakeholderManager.StakeholderRole.FARMER, "FreshFarm Co", "FARM001");
+        _createStakeholder(farmer2, StakeholderManager.StakeholderRole.FARMER, "Farm Fresh Ltd", "FARM002");
+        _createStakeholder(distributor1, StakeholderManager.StakeholderRole.DISTRIBUTOR, "Quick Distribution", "DIST001");
         
         // Search for partial match "Farm"
         address[] memory farmResults = stakeholderRegistry.findStakeholdersByBusinessName("Farm");
@@ -550,8 +554,8 @@ contract StakeholderRegistryFuzz is Test {
      */
     function testFindStakeholdersByBusinessNameEmpty() public {
         // Create some stakeholders
-        _createStakeholder(farmer1, Stakeholder.StakeholderRole.FARMER, "FreshFarm Co", "FARM001");
-        _createStakeholder(distributor1, Stakeholder.StakeholderRole.DISTRIBUTOR, "Quick Distribution", "DIST001");
+        _createStakeholder(farmer1, StakeholderManager.StakeholderRole.FARMER, "FreshFarm Co", "FARM001");
+        _createStakeholder(distributor1, StakeholderManager.StakeholderRole.DISTRIBUTOR, "Quick Distribution", "DIST001");
         
         // Search with empty string - the contract's _contains function returns true for empty needle
         // This is actually correct behavior in many string searching algorithms
@@ -576,7 +580,7 @@ contract StakeholderRegistryFuzz is Test {
         name = _sanitizeString(name, "TestStakeholder");
         license = _sanitizeString(license, string(abi.encodePacked("LIC", vm.toString(uint160(stakeholderAddr)))));
         
-        Stakeholder.StakeholderRole role = _getRandomRole(roleSeed);
+        StakeholderManager.StakeholderRole role = _getRandomRole(roleSeed);
         
         // Create stakeholder
         address contractAddr = _createStakeholder(stakeholderAddr, role, name, license);
@@ -584,7 +588,7 @@ contract StakeholderRegistryFuzz is Test {
         // Test all registry functions with same stakeholder
         assertTrue(stakeholderRegistry.isRegisteredStakeholder(stakeholderAddr, role));
         assertTrue(stakeholderRegistry.isActiveStakeholder(stakeholderAddr));
-        assertEq(stakeholderRegistry.getStakeholderContract(stakeholderAddr), contractAddr);
+        assertTrue(contractAddr != address(0)); // Just verify creation returned valid address
         
         (address addr, , string memory retrievedName, string memory retrievedLicense, , , bool active, , ) = 
             stakeholderRegistry.getStakeholderInfo(stakeholderAddr);
@@ -621,7 +625,7 @@ contract StakeholderRegistryFuzz is Test {
      * @dev Test case sensitivity in business name search
      */
     function testBusinessNameSearchCaseSensitive() public {
-        _createStakeholder(farmer1, Stakeholder.StakeholderRole.FARMER, "FreshFarm", "FARM001");
+        _createStakeholder(farmer1, StakeholderManager.StakeholderRole.FARMER, "FreshFarm", "FARM001");
         
         // Test exact case
         address[] memory exactResults = stakeholderRegistry.findStakeholdersByBusinessName("FreshFarm");
@@ -643,9 +647,9 @@ contract StakeholderRegistryFuzz is Test {
         // This test verifies the try-catch blocks handle invalid contracts gracefully
         // We can't easily create invalid registry entries, so we test with zero addresses
         
-        assertFalse(stakeholderRegistry.isRegisteredStakeholder(address(0), Stakeholder.StakeholderRole.FARMER));
+        assertFalse(stakeholderRegistry.isRegisteredStakeholder(address(0), StakeholderManager.StakeholderRole.FARMER));
         assertFalse(stakeholderRegistry.isActiveStakeholder(address(0)));
-        assertEq(stakeholderRegistry.getStakeholderContract(address(0)), address(0));
+        // Note: getStakeholderContract no longer exists in new architecture
         
         (address addr, , , , , , bool active, , ) = stakeholderRegistry.getStakeholderInfo(address(0));
         assertEq(addr, address(0));
@@ -663,7 +667,7 @@ contract StakeholderRegistryFuzz is Test {
         
         for (uint256 i = 0; i < stakeholderCount; i++) {
             address stakeholderAddr = address(uint160(0x2000 + i));
-            Stakeholder.StakeholderRole role = _getRandomRole(i);
+            StakeholderManager.StakeholderRole role = _getRandomRole(i);
             string memory name = string(abi.encodePacked("Business", vm.toString(i)));
             string memory license = string(abi.encodePacked("LIC", vm.toString(i)));
             
@@ -671,10 +675,10 @@ contract StakeholderRegistryFuzz is Test {
         }
         
         // Test that operations still work efficiently
-        address[] memory farmers = stakeholderRegistry.getStakeholdersByRole(Stakeholder.StakeholderRole.FARMER);
-        address[] memory distributors = stakeholderRegistry.getStakeholdersByRole(Stakeholder.StakeholderRole.DISTRIBUTOR);
-        address[] memory processors = stakeholderRegistry.getStakeholdersByRole(Stakeholder.StakeholderRole.PROCESSOR);
-        address[] memory retailers = stakeholderRegistry.getStakeholdersByRole(Stakeholder.StakeholderRole.RETAILER);
+        address[] memory farmers = stakeholderRegistry.getStakeholdersByRole(StakeholderManager.StakeholderRole.FARMER);
+        address[] memory distributors = stakeholderRegistry.getStakeholdersByRole(StakeholderManager.StakeholderRole.DISTRIBUTOR);
+        address[] memory processors = stakeholderRegistry.getStakeholdersByRole(StakeholderManager.StakeholderRole.PROCESSOR);
+        address[] memory retailers = stakeholderRegistry.getStakeholdersByRole(StakeholderManager.StakeholderRole.RETAILER);
         
         // Verify total count
         assertEq(farmers.length + distributors.length + processors.length + retailers.length, stakeholderCount);

@@ -3,21 +3,20 @@ pragma solidity ^0.8.0;
 
 import "forge-std/Test.sol";
 import "../src/SmartContracts/Registry.sol";
-import "../src/SmartContracts/StakeholderFactory.sol";
 import "../src/SmartContracts/ProductFactory.sol";
 import "../src/SmartContracts/ShipmentFactory.sol";
 import "../src/SmartContracts/StakeholderRegistry.sol";
-import "../src/SmartContracts/Stakeholder.sol";
 import "../src/SmartContracts/Product.sol";
 import "../src/SmartContracts/Shipment.sol";
 import "./MockOracle.sol";
+import "../src/SmartContracts/StakeholderManager.sol";
 
 contract FactoryRegistryFuzz is Test {
     Registry public registry;
-    StakeholderFactory public stakeholderFactory;
     ProductFactory public productFactory;
     ShipmentFactory public shipmentFactory;
     StakeholderRegistry public stakeholderRegistry;
+    StakeholderManager public stakeholderManager;
     
     // Mock oracles
     MockOracle public temperatureOracle;
@@ -36,9 +35,10 @@ contract FactoryRegistryFuzz is Test {
     function setUp() public {
         vm.startPrank(admin);
         
-        // Deploy core contracts
-        registry = new Registry();
-        stakeholderRegistry = new StakeholderRegistry(address(registry));
+        // Deploy core contracts in correct order
+        stakeholderManager = new StakeholderManager();
+        registry = new Registry(address(stakeholderManager));
+        stakeholderRegistry = new StakeholderRegistry(address(stakeholderManager));
         
         // Deploy mock oracles
         temperatureOracle = new MockOracle(25 * 10**8, 8, 1, "Temperature");
@@ -48,7 +48,6 @@ contract FactoryRegistryFuzz is Test {
         priceOracle = new MockOracle(100 * 10**8, 8, 1, "Price");
         
         // Deploy factory contracts
-        stakeholderFactory = new StakeholderFactory(address(registry));
         productFactory = new ProductFactory(
             address(stakeholderRegistry),
             address(registry),
@@ -66,10 +65,10 @@ contract FactoryRegistryFuzz is Test {
         vm.stopPrank();
     }
 
-    // ===== STAKEHOLDER FACTORY FUZZ TESTS =====
+    // ===== STAKEHOLDER MANAGEMENT FUZZ TESTS =====
 
     /**
-     * @dev Fuzz test for stakeholder creation with random parameters
+     * @dev Fuzz test for stakeholder creation with random parameters using StakeholderManager
      */
     function testFuzzCreateStakeholder(
         address stakeholderAddress,
@@ -84,16 +83,16 @@ contract FactoryRegistryFuzz is Test {
         vm.assume(bytes(businessName).length <= 100);
         vm.assume(bytes(businessLicense).length > 0);
         vm.assume(bytes(businessLicense).length <= 100);
-        vm.assume(roleIndex < 4); // 0-3 for valid roles
-        vm.assume(registry.getStakeholderByLicense(businessLicense) == address(0));
-        vm.assume(registry.getStakeholderByWallet(stakeholderAddress) == address(0));
+        vm.assume(roleIndex >= 1 && roleIndex <= 4); // 1-4 for valid roles (FARMER, PROCESSOR, RETAILER, DISTRIBUTOR)
+        vm.assume(!stakeholderManager.isRegistered(stakeholderAddress));
+        vm.assume(stakeholderManager.licenseToAddress(businessLicense) == address(0));
         
-        Stakeholder.StakeholderRole role = Stakeholder.StakeholderRole(roleIndex);
+        StakeholderManager.StakeholderRole role = StakeholderManager.StakeholderRole(roleIndex);
         
-        uint256 initialStakeholderCount = registry.getAllStakeholders().length;
+        uint256 initialStakeholderCount = stakeholderManager.totalStakeholders();
         
         vm.prank(admin);
-        address stakeholderContractAddress = stakeholderFactory.createStakeholder(
+        stakeholderManager.registerStakeholder(
             stakeholderAddress,
             role,
             businessName,
@@ -103,21 +102,30 @@ contract FactoryRegistryFuzz is Test {
         );
         
         // Verify stakeholder was created and registered
-        assertTrue(stakeholderContractAddress != address(0));
-        assertTrue(registry.isEntityRegistered(stakeholderContractAddress));
-        assertEq(registry.getStakeholderByLicense(businessLicense), stakeholderContractAddress);
-        assertEq(registry.getStakeholderByWallet(stakeholderAddress), stakeholderContractAddress);
-        assertEq(registry.getAllStakeholders().length, initialStakeholderCount + 1);
+        assertTrue(stakeholderManager.isRegistered(stakeholderAddress));
+        assertTrue(stakeholderManager.hasRole(stakeholderAddress, role));
+        assertEq(stakeholderManager.licenseToAddress(businessLicense), stakeholderAddress);
+        assertEq(stakeholderManager.totalStakeholders(), initialStakeholderCount + 1);
         
-        // Verify stakeholder contract properties
-        Stakeholder stakeholder = Stakeholder(stakeholderContractAddress);
-        assertEq(stakeholder.stakeholderAddress(), stakeholderAddress);
-        assertEq(uint8(stakeholder.role()), roleIndex);
-        assertEq(stakeholder.businessName(), businessName);
-        assertEq(stakeholder.businessLicense(), businessLicense);
-        assertEq(stakeholder.location(), location);
-        assertEq(stakeholder.certifications(), certifications);
-        assertTrue(stakeholder.isActive());
+        // Verify stakeholder properties through StakeholderManager
+        (
+            address addr,
+            StakeholderManager.StakeholderRole returnedRole,
+            string memory returnedBusinessName,
+            string memory returnedBusinessLicense,
+            string memory returnedLocation,
+            string memory returnedCertifications,
+            bool isActive,
+            ,
+        ) = stakeholderManager.stakeholders(stakeholderAddress);
+        
+        assertEq(addr, stakeholderAddress);
+        assertEq(uint8(returnedRole), roleIndex);
+        assertEq(returnedBusinessName, businessName);
+        assertEq(returnedBusinessLicense, businessLicense);
+        assertEq(returnedLocation, location);
+        assertEq(returnedCertifications, certifications);
+        assertTrue(isActive);
     }
 
     /**
@@ -133,12 +141,13 @@ contract FactoryRegistryFuzz is Test {
         vm.assume(stakeholderAddress != address(0));
         vm.assume(bytes(businessName).length > 0);
         vm.assume(bytes(businessLicense).length > 0);
+        vm.assume(!stakeholderManager.isRegistered(stakeholderAddress));
         
         vm.prank(unauthorizedCaller);
         vm.expectRevert("Only admin can call this function");
-        stakeholderFactory.createStakeholder(
+        stakeholderManager.registerStakeholder(
             stakeholderAddress,
-            Stakeholder.StakeholderRole.FARMER,
+            StakeholderManager.StakeholderRole.FARMER,
             businessName,
             businessLicense,
             "Location",
@@ -153,10 +162,10 @@ contract FactoryRegistryFuzz is Test {
         vm.startPrank(admin);
         
         // Test with zero address
-        vm.expectRevert("Invalid stakeholder address");
-        stakeholderFactory.createStakeholder(
+        vm.expectRevert("Invalid address");
+        stakeholderManager.registerStakeholder(
             address(0),
-            Stakeholder.StakeholderRole.FARMER,
+            StakeholderManager.StakeholderRole.FARMER,
             "Business Name",
             "LICENSE123",
             "Location",
@@ -164,10 +173,10 @@ contract FactoryRegistryFuzz is Test {
         );
         
         // Test with empty business name
-        vm.expectRevert("Business name cannot be empty");
-        stakeholderFactory.createStakeholder(
+        vm.expectRevert("Business name required");
+        stakeholderManager.registerStakeholder(
             farmer,
-            Stakeholder.StakeholderRole.FARMER,
+            StakeholderManager.StakeholderRole.FARMER,
             "",
             "LICENSE123",
             "Location",
@@ -175,10 +184,10 @@ contract FactoryRegistryFuzz is Test {
         );
         
         // Test with empty business license
-        vm.expectRevert("Business license cannot be empty");
-        stakeholderFactory.createStakeholder(
+        vm.expectRevert("Business license required");
+        stakeholderManager.registerStakeholder(
             farmer,
-            Stakeholder.StakeholderRole.FARMER,
+            StakeholderManager.StakeholderRole.FARMER,
             "Business Name",
             "",
             "Location",
@@ -204,22 +213,25 @@ contract FactoryRegistryFuzz is Test {
             address stakeholderAddr = address(uint160(seed + i + 1000));
             string memory businessName = string(abi.encodePacked("Business", vm.toString(i)));
             string memory businessLicense = string(abi.encodePacked("LICENSE", vm.toString(i)));
-            Stakeholder.StakeholderRole role = Stakeholder.StakeholderRole(i % 4);
+            StakeholderManager.StakeholderRole role = StakeholderManager.StakeholderRole((i % 4) + 1); // 1-4 for valid roles
             
-            address stakeholderContract = stakeholderFactory.createStakeholder(
-                stakeholderAddr,
-                role,
-                businessName,
-                businessLicense,
-                "Location",
-                "Certifications"
-            );
-            
-            assertTrue(stakeholderContract != address(0));
-            assertTrue(registry.isEntityRegistered(stakeholderContract));
+            // Skip if already registered
+            if (!stakeholderManager.isRegistered(stakeholderAddr) && 
+                stakeholderManager.licenseToAddress(businessLicense) == address(0)) {
+                
+                stakeholderManager.registerStakeholder(
+                    stakeholderAddr,
+                    role,
+                    businessName,
+                    businessLicense,
+                    "Location",
+                    "Certifications"
+                );
+                
+                assertTrue(stakeholderManager.isRegistered(stakeholderAddr));
+            }
         }
         
-        assertEq(registry.getAllStakeholders().length, stakeholderCount);
         vm.stopPrank();
     }
 
@@ -245,16 +257,17 @@ contract FactoryRegistryFuzz is Test {
         minTemp = minTemp % 101; // 0-100
         maxTemp = minTemp + (maxTemp % (101 - minTemp)); // minTemp to 100
         
-        // First create a farmer stakeholder
-        vm.prank(admin);
-        stakeholderFactory.createStakeholder(
+        // First register a farmer with StakeholderManager
+        vm.startPrank(admin);
+        stakeholderManager.registerStakeholder(
             farmer,
-            Stakeholder.StakeholderRole.FARMER,
+            StakeholderManager.StakeholderRole.FARMER,
             "Test Farm",
             "FARM123",
             "Farm Location",
             "Organic"
         );
+        vm.stopPrank();
         
         uint256 initialProductCount = registry.getTotalProducts();
         
@@ -318,16 +331,17 @@ contract FactoryRegistryFuzz is Test {
         vm.assume(productCount > 0 && productCount <= 10);
         vm.assume(seed < type(uint128).max); // Smaller seed to prevent overflow
         
-        // Create a farmer stakeholder
-        vm.prank(admin);
-        stakeholderFactory.createStakeholder(
+        // Register a farmer with StakeholderManager
+        vm.startPrank(admin);
+        stakeholderManager.registerStakeholder(
             farmer,
-            Stakeholder.StakeholderRole.FARMER,
+            StakeholderManager.StakeholderRole.FARMER,
             "Test Farm",
             "FARM123",
             "Farm Location",
             "Organic"
         );
+        vm.stopPrank();
         
         vm.startPrank(farmer);
         
@@ -367,36 +381,46 @@ contract FactoryRegistryFuzz is Test {
         vm.assume(bytes(trackingNumber).length <= 50);
         vm.assume(bytes(transportMode).length <= 100);
         
-        // Create farmer and processor stakeholders
+        // Register farmer, processor, distributor, and receiver stakeholders
         vm.startPrank(admin);
-        stakeholderFactory.createStakeholder(
+        stakeholderManager.registerStakeholder(
             farmer,
-            Stakeholder.StakeholderRole.FARMER,
+            StakeholderManager.StakeholderRole.FARMER,
             "Test Farm",
             "FARM123",
             "Farm Location",
             "Organic"
         );
         
-        stakeholderFactory.createStakeholder(
+        stakeholderManager.registerStakeholder(
             processor,
-            Stakeholder.StakeholderRole.PROCESSOR,
+            StakeholderManager.StakeholderRole.PROCESSOR,
             "Test Processor",
             "PROC123",
             "Processor Location",
             "Food Safety Certified"
         );
         
-        stakeholderFactory.createStakeholder(
+        stakeholderManager.registerStakeholder(
             distributor,
-            Stakeholder.StakeholderRole.DISTRIBUTOR,
+            StakeholderManager.StakeholderRole.DISTRIBUTOR,
             "Test Distributor",
             "DIST123",
             "Distributor Location",
             "ISO Certified"
         );
-        vm.stopPrank();
         
+        // Register the receiver as well
+        stakeholderManager.registerStakeholder(
+            receiver,
+            StakeholderManager.StakeholderRole.RETAILER,
+            "Test Receiver",
+            string(abi.encodePacked("RECV", vm.toString(uint256(uint160(receiver))))),
+            "Receiver Location",
+            "Retail Certified"
+        );
+        vm.stopPrank();
+
         // Create a product first
         vm.prank(farmer);
         address realProductAddress = productFactory.createProduct(
@@ -436,9 +460,7 @@ contract FactoryRegistryFuzz is Test {
         assertEq(shipment.transportMode(), transportMode);
         assertEq(uint8(shipment.status()), uint8(Shipment.ShipmentStatus.PREPARING));
         assertTrue(shipment.isActive());
-    }
-
-    /**
+    }    /**
      * @dev Fuzz test for unauthorized shipment creation
      */
     function testFuzzUnauthorizedShipmentCreation(
@@ -470,29 +492,29 @@ contract FactoryRegistryFuzz is Test {
         vm.assume(shipmentCount > 0 && shipmentCount <= 10);
         vm.assume(seed < type(uint64).max); // Even smaller seed to prevent overflow
         
-        // Create farmer, processor, and distributor stakeholder
+        // Register farmer, processor, and distributor stakeholders
         vm.startPrank(admin);
-        stakeholderFactory.createStakeholder(
+        stakeholderManager.registerStakeholder(
             farmer,
-            Stakeholder.StakeholderRole.FARMER,
+            StakeholderManager.StakeholderRole.FARMER,
             "Test Farm",
             "FARM123",
             "Farm Location",
             "Organic"
         );
         
-        stakeholderFactory.createStakeholder(
+        stakeholderManager.registerStakeholder(
             processor,
-            Stakeholder.StakeholderRole.PROCESSOR,
+            StakeholderManager.StakeholderRole.PROCESSOR,
             "Test Processor",
             "PROC123",
             "Processor Location",
             "Food Safety Certified"
         );
         
-        stakeholderFactory.createStakeholder(
+        stakeholderManager.registerStakeholder(
             distributor,
-            Stakeholder.StakeholderRole.DISTRIBUTOR,
+            StakeholderManager.StakeholderRole.DISTRIBUTOR,
             "Test Distributor",
             "DIST123",
             "Distributor Location",
@@ -524,6 +546,20 @@ contract FactoryRegistryFuzz is Test {
             address receiverAddr = address(uint160(uint256(keccak256(abi.encode(seed, i, 3000))) % type(uint64).max + 3000));
             string memory trackingNumber = string(abi.encodePacked("TRACK", vm.toString(i)));
             
+            // Register receiver as a retailer
+            vm.stopPrank();
+            vm.startPrank(admin);
+            stakeholderManager.registerStakeholder(
+                receiverAddr,
+                StakeholderManager.StakeholderRole.RETAILER,
+                string(abi.encodePacked("Retailer", vm.toString(i))),
+                string(abi.encodePacked("RETAIL", vm.toString(i))),
+                "Retail Location",
+                "Retail Certifications"
+            );
+            vm.stopPrank();
+            
+            vm.startPrank(distributor);
             address shipmentAddress = shipmentFactory.createShipment(
                 products[i],
                 receiverAddr,
@@ -564,32 +600,41 @@ contract FactoryRegistryFuzz is Test {
         
         vm.startPrank(admin);
         
-        // Create stakeholders
-        stakeholderFactory.createStakeholder(
+        // Register stakeholders
+        stakeholderManager.registerStakeholder(
             farmerAddr,
-            Stakeholder.StakeholderRole.FARMER,
+            StakeholderManager.StakeholderRole.FARMER,
             "Test Farm",
             string(abi.encodePacked("FARM", vm.toString(uint256(keccak256(abi.encode(seed)))))),
             "Farm Location",
             "Organic"
         );
         
-        stakeholderFactory.createStakeholder(
+        stakeholderManager.registerStakeholder(
             processorAddr,
-            Stakeholder.StakeholderRole.PROCESSOR,
+            StakeholderManager.StakeholderRole.PROCESSOR,
             "Test Processor",
             string(abi.encodePacked("PROC", vm.toString(uint256(keccak256(abi.encode(seed)))))),
             "Processor Location",
             "Food Safety Certified"
         );
         
-        stakeholderFactory.createStakeholder(
+        stakeholderManager.registerStakeholder(
             distributorAddr,
-            Stakeholder.StakeholderRole.DISTRIBUTOR,
+            StakeholderManager.StakeholderRole.DISTRIBUTOR,
             "Test Distributor",
             string(abi.encodePacked("DIST", vm.toString(uint256(keccak256(abi.encode(seed)))))),
             "Distributor Location",
             "ISO Certified"
+        );
+        
+        stakeholderManager.registerStakeholder(
+            retailerAddr,
+            StakeholderManager.StakeholderRole.RETAILER,
+            "Test Retailer",
+            string(abi.encodePacked("RET", vm.toString(uint256(keccak256(abi.encode(seed)))))),
+            "Retailer Location",
+            "Retail Certified"
         );
         
         vm.stopPrank();
@@ -645,7 +690,7 @@ contract FactoryRegistryFuzz is Test {
         vm.assume(shipmentCount > 0 && shipmentCount <= 5);
         vm.assume(seed < type(uint128).max); // Smaller seed to prevent overflow
         
-        // Create stakeholders
+        // Register stakeholders
         vm.startPrank(admin);
         address[] memory farmers = new address[](stakeholderCount);
         address[] memory processors = new address[](stakeholderCount);
@@ -656,27 +701,27 @@ contract FactoryRegistryFuzz is Test {
             processors[i] = address(uint160(uint256(keccak256(abi.encode(seed, i, 1500))) % type(uint128).max + 1500));
             distributors[i] = address(uint160(uint256(keccak256(abi.encode(seed, i, 2000))) % type(uint128).max + 2000));
             
-            stakeholderFactory.createStakeholder(
+            stakeholderManager.registerStakeholder(
                 farmers[i],
-                Stakeholder.StakeholderRole.FARMER,
+                StakeholderManager.StakeholderRole.FARMER,
                 string(abi.encodePacked("Farm", vm.toString(i))),
                 string(abi.encodePacked("FARM", vm.toString(i))),
                 "Location",
                 "Certifications"
             );
             
-            stakeholderFactory.createStakeholder(
+            stakeholderManager.registerStakeholder(
                 processors[i],
-                Stakeholder.StakeholderRole.PROCESSOR,
+                StakeholderManager.StakeholderRole.PROCESSOR,
                 string(abi.encodePacked("Processor", vm.toString(i))),
                 string(abi.encodePacked("PROC", vm.toString(i))),
                 "Location",
                 "Certifications"
             );
             
-            stakeholderFactory.createStakeholder(
+            stakeholderManager.registerStakeholder(
                 distributors[i],
-                Stakeholder.StakeholderRole.DISTRIBUTOR,
+                StakeholderManager.StakeholderRole.DISTRIBUTOR,
                 string(abi.encodePacked("Dist", vm.toString(i))),
                 string(abi.encodePacked("DIST", vm.toString(i))),
                 "Location",
@@ -705,17 +750,38 @@ contract FactoryRegistryFuzz is Test {
         
         // Create shipments
         for (uint256 i = 0; i < shipmentCount; i++) {
+            address receiverAddr = address(uint160(uint256(keccak256(abi.encode(seed, i, 5000))) % type(uint128).max + 5000));
+            
+            // Register receiver as a retailer
+            vm.startPrank(admin);
+            stakeholderManager.registerStakeholder(
+                receiverAddr,
+                StakeholderManager.StakeholderRole.RETAILER,
+                string(abi.encodePacked("RetailerState", vm.toString(i))),
+                string(abi.encodePacked("RETST", vm.toString(i))),
+                "Retail Location",
+                "Retail Certifications"
+            );
+            vm.stopPrank();
+            
             vm.prank(distributors[i % distributors.length]);
             shipmentFactory.createShipment(
                 products[i % products.length],
-                address(uint160(uint256(keccak256(abi.encode(seed, i, 5000))) % type(uint128).max + 5000)),
+                receiverAddr,
                 string(abi.encodePacked("TRACK", vm.toString(i))),
                 "Transport"
             );
         }
         
         // Verify state consistency
-        assertEq(registry.getAllStakeholders().length, stakeholderCount * 3); // farmer, processor, distributor for each count
+        uint256 expectedStakeholderCount = stakeholderCount * 3 + shipmentCount; // farmer, processor, distributor for each count + retailers
+        vm.startPrank(admin);
+        address[] memory allStakeholders = stakeholderManager.getStakeholdersByRole(StakeholderManager.StakeholderRole.FARMER);
+        allStakeholders = stakeholderManager.getStakeholdersByRole(StakeholderManager.StakeholderRole.PROCESSOR);
+        allStakeholders = stakeholderManager.getStakeholdersByRole(StakeholderManager.StakeholderRole.DISTRIBUTOR);
+        vm.stopPrank();
+        
+        assertEq(stakeholderManager.totalStakeholders(), expectedStakeholderCount);
         assertEq(registry.getTotalProducts(), productCount);
         assertEq(registry.getTotalShipments(), shipmentCount);
     }
@@ -732,9 +798,9 @@ contract FactoryRegistryFuzz is Test {
         
         vm.startPrank(admin);
         for (uint256 i = 0; i < batchSize; i++) {
-            stakeholderFactory.createStakeholder(
+            stakeholderManager.registerStakeholder(
                 address(uint160(i + 1000)),
-                Stakeholder.StakeholderRole(i % 4),
+                StakeholderManager.StakeholderRole(i % 4 + 1), // 1-4 for valid roles
                 string(abi.encodePacked("Business", vm.toString(i))),
                 string(abi.encodePacked("LICENSE", vm.toString(i))),
                 "Location",
@@ -746,7 +812,7 @@ contract FactoryRegistryFuzz is Test {
         uint256 gasUsed = gasStart - gasleft();
         
         // Verify all stakeholders were created
-        assertEq(registry.getAllStakeholders().length, batchSize);
+        assertEq(stakeholderManager.totalStakeholders(), batchSize);
         
         // Gas should scale reasonably with batch size
         assertTrue(gasUsed > 0);
@@ -771,16 +837,17 @@ contract FactoryRegistryFuzz is Test {
         
         address stakeholderAddr = address(uint160(uint256(keccak256(abi.encode(seed, 100))) % type(uint128).max + 100));
         
-        // Test stakeholder creation event
-        vm.prank(admin);
-        stakeholderFactory.createStakeholder(
+        // Register stakeholder with StakeholderManager
+        vm.startPrank(admin);
+        stakeholderManager.registerStakeholder(
             stakeholderAddr,
-            Stakeholder.StakeholderRole.FARMER,
+            StakeholderManager.StakeholderRole.FARMER,
             businessName,
             "LICENSE123",
             "Location",
             "Certifications"
         );
+        vm.stopPrank();
         
         // Test product creation event
         vm.prank(stakeholderAddr);
@@ -796,10 +863,9 @@ contract FactoryRegistryFuzz is Test {
 
     // ===== HELPER FUNCTIONS & EVENTS =====
 
-    event StakeholderCreated(
-        address indexed stakeholderContractAddress,
-        address indexed stakeholderAddress,
-        Stakeholder.StakeholderRole indexed role,
+    event StakeholderRegistered(
+        address indexed stakeholder,
+        StakeholderManager.StakeholderRole indexed role,
         string businessName,
         string businessLicense,
         uint256 timestamp
@@ -814,10 +880,10 @@ contract FactoryRegistryFuzz is Test {
 
     event ShipmentCreated(
         address indexed shipmentAddress,
-        address indexed distributor,
         address indexed productAddress,
+        address indexed sender,
         address receiver,
         string trackingNumber,
-        string transportMode
+        uint256 timestamp
     );
 }

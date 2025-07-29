@@ -3,10 +3,11 @@ pragma solidity ^0.8.0;
 
 import "forge-std/Test.sol";
 import "../src/SmartContracts/Registry.sol";
-import "../src/SmartContracts/Stakeholder.sol";
+import "../src/SmartContracts/StakeholderManager.sol";
 
 contract ContractRegistryFuzz is Test {
-    Registry registry;
+    Registry public registry;
+    StakeholderManager public stakeholderManager;
     
     address admin = address(0x1);
     address farmer = address(0x2);
@@ -16,8 +17,10 @@ contract ContractRegistryFuzz is Test {
     address nonAdmin = address(0x6);
 
     function setUp() public {
-        vm.prank(admin);
-        registry = new Registry();
+        vm.startPrank(admin);
+        stakeholderManager = new StakeholderManager();
+        registry = new Registry(address(stakeholderManager));
+        vm.stopPrank();
     }
 
     // ===== PRODUCT REGISTRATION FUZZ TESTS =====
@@ -96,6 +99,26 @@ contract ContractRegistryFuzz is Test {
         vm.assume(bytes(trackingNumber).length <= 100); // Reasonable limit
         vm.assume(!registry.isEntityRegistered(shipmentAddress));
         
+        // Register sender and receiver as stakeholders first
+        vm.startPrank(admin);
+        stakeholderManager.registerStakeholder(
+            sender,
+            StakeholderManager.StakeholderRole.FARMER,
+            "Sender Farm",
+            string(abi.encodePacked("LICENSE_SENDER_", vm.toString(uint160(sender)))),
+            "Sender Location",
+            "Sender Certs"
+        );
+        stakeholderManager.registerStakeholder(
+            receiver,
+            StakeholderManager.StakeholderRole.PROCESSOR,
+            "Receiver Processor",
+            string(abi.encodePacked("LICENSE_RECEIVER_", vm.toString(uint160(receiver)))),
+            "Receiver Location",
+            "Receiver Certs"
+        );
+        vm.stopPrank();
+        
         uint256 initialCount = registry.getTotalShipments();
         
         vm.expectEmit(true, true, true, true);
@@ -126,6 +149,26 @@ contract ContractRegistryFuzz is Test {
         vm.assume(receiver != address(0));
         vm.assume(bytes(trackingNumber).length > 0);
         
+        // Register sender and receiver as stakeholders first
+        vm.startPrank(admin);
+        stakeholderManager.registerStakeholder(
+            sender,
+            StakeholderManager.StakeholderRole.FARMER,
+            "Sender Farm",
+            string(abi.encodePacked("LICENSE_SENDER_", vm.toString(uint160(sender)))),
+            "Sender Location",
+            "Sender Certs"
+        );
+        stakeholderManager.registerStakeholder(
+            receiver,
+            StakeholderManager.StakeholderRole.PROCESSOR,
+            "Receiver Processor",
+            string(abi.encodePacked("LICENSE_RECEIVER_", vm.toString(uint160(receiver)))),
+            "Receiver Location",
+            "Receiver Certs"
+        );
+        vm.stopPrank();
+        
         registry.registerShipment(shipmentAddress, trackingNumber, productAddress, sender, receiver);
         
         vm.expectRevert("Shipment already registered");
@@ -150,6 +193,26 @@ contract ContractRegistryFuzz is Test {
         vm.assume(stringLength <= 200); // Gas limit consideration
         vm.assume(!registry.isEntityRegistered(shipmentAddress));
         
+        // Register sender and receiver as stakeholders first
+        vm.startPrank(admin);
+        stakeholderManager.registerStakeholder(
+            sender,
+            StakeholderManager.StakeholderRole.FARMER,
+            "Sender Farm",
+            string(abi.encodePacked("LICENSE_SENDER_", vm.toString(uint160(sender)))),
+            "Sender Location",
+            "Sender Certs"
+        );
+        stakeholderManager.registerStakeholder(
+            receiver,
+            StakeholderManager.StakeholderRole.PROCESSOR,
+            "Receiver Processor",
+            string(abi.encodePacked("LICENSE_RECEIVER_", vm.toString(uint160(receiver)))),
+            "Receiver Location",
+            "Receiver Certs"
+        );
+        vm.stopPrank();
+        
         string memory trackingNumber = _generateString(stringLength);
         
         registry.registerShipment(shipmentAddress, trackingNumber, productAddress, sender, receiver);
@@ -157,41 +220,51 @@ contract ContractRegistryFuzz is Test {
         assertTrue(registry.isEntityRegistered(shipmentAddress));
     }
 
-    // ===== STAKEHOLDER REGISTRATION FUZZ TESTS =====
+    // ===== STAKEHOLDER MANAGEMENT FUZZ TESTS =====
 
     /**
-     * @dev Fuzz test for stakeholder registration
+     * @dev Fuzz test for stakeholder registration through StakeholderManager
      */
     function testFuzzRegisterStakeholder(
-        address stakeholderContract,
-        string memory businessLicense,
         address stakeholderAddress,
+        string memory businessName,
+        string memory businessLicense,
         uint8 roleIndex
     ) public {
-        vm.assume(stakeholderContract != address(0));
         vm.assume(stakeholderAddress != address(0));
+        vm.assume(bytes(businessName).length > 0);
+        vm.assume(bytes(businessName).length <= 100);
         vm.assume(bytes(businessLicense).length > 0);
         vm.assume(bytes(businessLicense).length <= 100);
-        vm.assume(roleIndex < 4); // 0-3 for FARMER, PROCESSOR, RETAILER, DISTRIBUTOR
-        vm.assume(!registry.isEntityRegistered(stakeholderContract));
-        vm.assume(registry.getStakeholderByLicense(businessLicense) == address(0));
-        vm.assume(registry.getStakeholderByWallet(stakeholderAddress) == address(0));
+        vm.assume(roleIndex >= 1 && roleIndex <= 4); // 1-4 for FARMER, PROCESSOR, RETAILER, DISTRIBUTOR
+        vm.assume(!stakeholderManager.isRegistered(stakeholderAddress));
+        vm.assume(stakeholderManager.licenseToAddress(businessLicense) == address(0));
+
+        StakeholderManager.StakeholderRole role = StakeholderManager.StakeholderRole(roleIndex);
+        uint256 initialCount = stakeholderManager.totalStakeholders();
+
+        vm.prank(admin);
+        stakeholderManager.registerStakeholder(
+            stakeholderAddress,
+            role,
+            businessName,
+            businessLicense,
+            "Test Location",
+            "Test Certifications"
+        );
         
-        Stakeholder.StakeholderRole role = Stakeholder.StakeholderRole(roleIndex);
+        assertTrue(stakeholderManager.isRegistered(stakeholderAddress));
+        assertTrue(stakeholderManager.hasRole(stakeholderAddress, role));
+        assertEq(stakeholderManager.totalStakeholders(), initialCount + 1);
+        assertEq(stakeholderManager.licenseToAddress(businessLicense), stakeholderAddress);
         
-        vm.expectEmit(true, true, true, true);
-        emit StakeholderRegistered(stakeholderContract, businessLicense, stakeholderAddress, role);
+        vm.startPrank(admin);
+        address[] memory stakeholdersByRole = stakeholderManager.getStakeholdersByRole(role);
+        vm.stopPrank();
         
-        registry.registerStakeholder(stakeholderContract, businessLicense, stakeholderAddress, role);
-        
-        assertTrue(registry.isEntityRegistered(stakeholderContract));
-        assertEq(registry.getStakeholderByLicense(businessLicense), stakeholderContract);
-        assertEq(registry.getStakeholderByWallet(stakeholderAddress), stakeholderContract);
-        
-        address[] memory stakeholdersByRole = registry.getStakeholdersByRole(role);
         bool found = false;
         for (uint256 i = 0; i < stakeholdersByRole.length; i++) {
-            if (stakeholdersByRole[i] == stakeholderContract) {
+            if (stakeholdersByRole[i] == stakeholderAddress) {
                 found = true;
                 break;
             }
@@ -200,114 +273,81 @@ contract ContractRegistryFuzz is Test {
     }
 
     /**
-     * @dev Fuzz test for preventing duplicate stakeholder contract registration
+     * @dev Fuzz test for preventing duplicate stakeholder registration
      */
-    function testFuzzPreventDuplicateStakeholderContract(
-        address stakeholderContract,
-        string memory businessLicense1,
-        string memory businessLicense2,
-        address stakeholderAddress1,
-        address stakeholderAddress2,
-        uint8 role1,
-        uint8 role2
+    function testFuzzPreventDuplicateStakeholderRegistration(
+        address stakeholderAddress,
+        string memory businessName,
+        string memory businessLicense
     ) public {
-        vm.assume(stakeholderContract != address(0));
-        vm.assume(stakeholderAddress1 != address(0));
-        vm.assume(stakeholderAddress2 != address(0));
-        vm.assume(bytes(businessLicense1).length > 0);
-        vm.assume(bytes(businessLicense2).length > 0);
-        vm.assume(role1 < 4 && role2 < 4);
-        vm.assume(!_stringEquals(businessLicense1, businessLicense2));
-        vm.assume(stakeholderAddress1 != stakeholderAddress2);
+        vm.assume(stakeholderAddress != address(0));
+        vm.assume(bytes(businessName).length > 0);
+        vm.assume(bytes(businessLicense).length > 0);
+        vm.assume(!stakeholderManager.isRegistered(stakeholderAddress));
+        vm.assume(stakeholderManager.licenseToAddress(businessLicense) == address(0));
         
-        registry.registerStakeholder(
-            stakeholderContract, 
-            businessLicense1, 
-            stakeholderAddress1, 
-            Stakeholder.StakeholderRole(role1)
+        vm.startPrank(admin);
+        stakeholderManager.registerStakeholder(
+            stakeholderAddress,
+            StakeholderManager.StakeholderRole.FARMER,
+            businessName,
+            businessLicense,
+            "Test Location",
+            "Test Certifications"
         );
         
-        vm.expectRevert("Stakeholder already registered");
-        registry.registerStakeholder(
-            stakeholderContract, 
-            businessLicense2, 
-            stakeholderAddress2, 
-            Stakeholder.StakeholderRole(role2)
+        vm.expectRevert("Already registered");
+        stakeholderManager.registerStakeholder(
+            stakeholderAddress,
+            StakeholderManager.StakeholderRole.PROCESSOR,
+            "Different Name",
+            "Different License",
+            "Different Location",
+            "Different Certifications"
         );
+        vm.stopPrank();
     }
 
     /**
      * @dev Fuzz test for preventing duplicate business license
      */
     function testFuzzPreventDuplicateBusinessLicense(
-        address stakeholderContract1,
-        address stakeholderContract2,
+        address stakeholder1,
+        address stakeholder2,
         string memory businessLicense,
-        address stakeholderAddress1,
-        address stakeholderAddress2,
-        uint8 role1,
-        uint8 role2
+        string memory businessName1,
+        string memory businessName2
     ) public {
-        vm.assume(stakeholderContract1 != address(0));
-        vm.assume(stakeholderContract2 != address(0));
-        vm.assume(stakeholderContract1 != stakeholderContract2);
-        vm.assume(stakeholderAddress1 != address(0));
-        vm.assume(stakeholderAddress2 != address(0));
-        vm.assume(stakeholderAddress1 != stakeholderAddress2);
+        vm.assume(stakeholder1 != address(0));
+        vm.assume(stakeholder2 != address(0));
+        vm.assume(stakeholder1 != stakeholder2);
         vm.assume(bytes(businessLicense).length > 0);
-        vm.assume(role1 < 4 && role2 < 4);
+        vm.assume(bytes(businessName1).length > 0);
+        vm.assume(bytes(businessName2).length > 0);
+        vm.assume(!stakeholderManager.isRegistered(stakeholder1));
+        vm.assume(!stakeholderManager.isRegistered(stakeholder2));
+        vm.assume(stakeholderManager.licenseToAddress(businessLicense) == address(0));
         
-        registry.registerStakeholder(
-            stakeholderContract1, 
-            businessLicense, 
-            stakeholderAddress1, 
-            Stakeholder.StakeholderRole(role1)
+        vm.startPrank(admin);
+        stakeholderManager.registerStakeholder(
+            stakeholder1,
+            StakeholderManager.StakeholderRole.FARMER,
+            businessName1,
+            businessLicense,
+            "Location 1",
+            "Certifications 1"
         );
         
-        vm.expectRevert("Business license already registered");
-        registry.registerStakeholder(
-            stakeholderContract2, 
-            businessLicense, 
-            stakeholderAddress2, 
-            Stakeholder.StakeholderRole(role2)
+        vm.expectRevert("License already exists");
+        stakeholderManager.registerStakeholder(
+            stakeholder2,
+            StakeholderManager.StakeholderRole.PROCESSOR,
+            businessName2,
+            businessLicense,
+            "Location 2",
+            "Certifications 2"
         );
-    }
-
-    /**
-     * @dev Fuzz test for preventing duplicate stakeholder address
-     */
-    function testFuzzPreventDuplicateStakeholderAddress(
-        address stakeholderContract1,
-        address stakeholderContract2,
-        string memory businessLicense1,
-        string memory businessLicense2,
-        address stakeholderAddress,
-        uint8 role1,
-        uint8 role2
-    ) public {
-        vm.assume(stakeholderContract1 != address(0));
-        vm.assume(stakeholderContract2 != address(0));
-        vm.assume(stakeholderContract1 != stakeholderContract2);
-        vm.assume(stakeholderAddress != address(0));
-        vm.assume(bytes(businessLicense1).length > 0);
-        vm.assume(bytes(businessLicense2).length > 0);
-        vm.assume(!_stringEquals(businessLicense1, businessLicense2));
-        vm.assume(role1 < 4 && role2 < 4);
-        
-        registry.registerStakeholder(
-            stakeholderContract1, 
-            businessLicense1, 
-            stakeholderAddress, 
-            Stakeholder.StakeholderRole(role1)
-        );
-        
-        vm.expectRevert("Stakeholder address already has a contract");
-        registry.registerStakeholder(
-            stakeholderContract2, 
-            businessLicense2, 
-            stakeholderAddress, 
-            Stakeholder.StakeholderRole(role2)
-        );
+        vm.stopPrank();
     }
 
     // ===== ROLE DISTRIBUTION FUZZ TESTS =====
@@ -324,29 +364,40 @@ contract ContractRegistryFuzz is Test {
         
         uint256[4] memory roleCounts;
         
+        vm.startPrank(admin);
         for (uint256 i = 0; i < stakeholderCount; i++) {
-            address stakeholderContract = address(uint160(seed + i + 1000));
+            address stakeholderAddress = address(uint160(seed + i + 1000));
             string memory businessLicense = string(abi.encodePacked("LICENSE", vm.toString(i)));
-            address stakeholderAddress = address(uint160(seed + i + 2000));
-            uint8 roleIndex = uint8(i % 4);
-            
-            Stakeholder.StakeholderRole role = Stakeholder.StakeholderRole(roleIndex);
-            
-            registry.registerStakeholder(
-                stakeholderContract,
-                businessLicense,
-                stakeholderAddress,
-                role
-            );
-            
-            roleCounts[roleIndex]++;
+            string memory businessName = string(abi.encodePacked("Business", vm.toString(i)));
+            uint8 roleIndex = uint8((i % 4) + 1); // 1-4 for valid roles
+
+            // Skip if already registered
+            if (!stakeholderManager.isRegistered(stakeholderAddress) && 
+                stakeholderManager.licenseToAddress(businessLicense) == address(0)) {
+                
+                StakeholderManager.StakeholderRole role = StakeholderManager.StakeholderRole(roleIndex);
+
+                stakeholderManager.registerStakeholder(
+                    stakeholderAddress,
+                    role,
+                    businessName,
+                    businessLicense,
+                    "Test Location",
+                    "Test Certifications"
+                );
+                
+                roleCounts[roleIndex - 1]++; // Adjust for 0-based array
+            }
         }
+        vm.stopPrank();
         
-        // Verify role distribution
-        for (uint256 i = 0; i < 4; i++) {
-            address[] memory roleStakeholders = registry.getStakeholdersByRole(Stakeholder.StakeholderRole(i));
-            assertEq(roleStakeholders.length, roleCounts[i]);
+        // Verify role distribution (using StakeholderManager directly as admin)
+        vm.startPrank(admin);
+        for (uint256 i = 1; i <= 4; i++) {
+            address[] memory roleStakeholders = stakeholderManager.getStakeholdersByRole(StakeholderManager.StakeholderRole(i));
+            assertEq(roleStakeholders.length, roleCounts[i - 1]);
         }
+        vm.stopPrank();
     }
 
     // ===== QUERY FUNCTION FUZZ TESTS =====
@@ -361,11 +412,12 @@ contract ContractRegistryFuzz is Test {
         vm.assume(randomAddress != address(0));
         vm.assume(bytes(randomLicense).length > 0);
         vm.assume(!registry.isEntityRegistered(randomAddress));
-        vm.assume(registry.getStakeholderByLicense(randomLicense) == address(0));
+        vm.assume(!stakeholderManager.isRegistered(randomAddress));
+        vm.assume(stakeholderManager.licenseToAddress(randomLicense) == address(0));
         
         assertFalse(registry.isEntityRegistered(randomAddress));
-        assertEq(registry.getStakeholderByLicense(randomLicense), address(0));
-        assertEq(registry.getStakeholderByWallet(randomAddress), address(0));
+        assertFalse(registry.isStakeholderRegistered(randomAddress));
+        assertEq(stakeholderManager.licenseToAddress(randomLicense), address(0));
     }
 
     /**
@@ -374,9 +426,9 @@ contract ContractRegistryFuzz is Test {
     function testFuzzArrayConsistency(
         address[5] memory products,
         address[5] memory shipments,
-        address[5] memory stakeholderContracts,
+        address[5] memory stakeholderAddresses,
         string[5] memory businessLicenses,
-        address[5] memory stakeholderAddresses
+        string[5] memory businessNames
     ) public {
         uint256 productCount = 0;
         uint256 shipmentCount = 0;
@@ -390,36 +442,60 @@ contract ContractRegistryFuzz is Test {
             }
         }
         
-        // Register shipments
-        for (uint256 i = 0; i < shipments.length; i++) {
-            if (shipments[i] != address(0) && !registry.isEntityRegistered(shipments[i])) {
-                registry.registerShipment(
-                    shipments[i],
-                    string(abi.encodePacked("TRACK", vm.toString(i))),
-                    address(uint160(i + 100)), // Dummy product address
-                    address(uint160(i + 200)), // Dummy sender
-                    address(uint160(i + 300))  // Dummy receiver
-                );
-                shipmentCount++;
-            }
-        }
-        
-        // Register stakeholders
-        for (uint256 i = 0; i < stakeholderContracts.length; i++) {
-            if (stakeholderContracts[i] != address(0) &&
-                stakeholderAddresses[i] != address(0) &&
+        // Register stakeholders first
+        vm.startPrank(admin);
+        for (uint256 i = 0; i < stakeholderAddresses.length; i++) {
+            if (stakeholderAddresses[i] != address(0) &&
                 bytes(businessLicenses[i]).length > 0 &&
-                !registry.isEntityRegistered(stakeholderContracts[i]) &&
-                registry.getStakeholderByLicense(businessLicenses[i]) == address(0) &&
-                registry.getStakeholderByWallet(stakeholderAddresses[i]) == address(0)) {
+                bytes(businessNames[i]).length > 0 &&
+                !stakeholderManager.isRegistered(stakeholderAddresses[i]) &&
+                stakeholderManager.licenseToAddress(businessLicenses[i]) == address(0)) {
                 
-                registry.registerStakeholder(
-                    stakeholderContracts[i],
-                    businessLicenses[i],
+                stakeholderManager.registerStakeholder(
                     stakeholderAddresses[i],
-                    Stakeholder.StakeholderRole(i % 4)
+                    StakeholderManager.StakeholderRole(((i % 4) + 1)), // 1-4 for valid roles
+                    businessNames[i],
+                    businessLicenses[i],
+                    "Test Location",
+                    "Test Certifications"
                 );
                 stakeholderCount++;
+            }
+        }
+        vm.stopPrank();
+        
+        // Register shipments (only if we have at least 2 stakeholders)
+        if (stakeholderCount >= 2) {
+            // Find first two registered stakeholders
+            address sender = address(0);
+            address receiver = address(0);
+            uint256 foundCount = 0;
+            
+            for (uint256 i = 0; i < stakeholderAddresses.length && foundCount < 2; i++) {
+                if (stakeholderManager.isRegistered(stakeholderAddresses[i])) {
+                    if (foundCount == 0) {
+                        sender = stakeholderAddresses[i];
+                        foundCount++;
+                    } else {
+                        receiver = stakeholderAddresses[i];
+                        foundCount++;
+                    }
+                }
+            }
+            
+            if (sender != address(0) && receiver != address(0)) {
+                for (uint256 i = 0; i < shipments.length; i++) {
+                    if (shipments[i] != address(0) && !registry.isEntityRegistered(shipments[i])) {
+                        registry.registerShipment(
+                            shipments[i],
+                            string(abi.encodePacked("TRACK", vm.toString(i))),
+                            address(uint160(i + 100)), // Dummy product address
+                            sender,
+                            receiver
+                        );
+                        shipmentCount++;
+                    }
+                }
             }
         }
         
@@ -428,42 +504,52 @@ contract ContractRegistryFuzz is Test {
         assertEq(registry.getTotalShipments(), shipmentCount);
         assertEq(registry.getAllProducts().length, productCount);
         assertEq(registry.getAllShipments().length, shipmentCount);
-        assertEq(registry.getAllStakeholders().length, stakeholderCount);
+        assertEq(stakeholderManager.totalStakeholders(), stakeholderCount);
     }
 
     // ===== EDGE CASE FUZZ TESTS =====
 
     /**
-     * @dev Fuzz test with address(0) inputs
+     * @dev Fuzz test with address(0) inputs for products
      */
-    function testFuzzZeroAddressHandling(string memory businessLicense) public {
-        vm.assume(bytes(businessLicense).length > 0);
-        
-        // Test product registration with address(0) - should succeed in Registry contract
-        // as it only checks for duplicates, not zero addresses
+    function testFuzzZeroAddressHandling() public {
+        // Test product registration with address(0) - should fail now
+        vm.expectRevert("Invalid product address");
         registry.registerProduct(address(0));
-        assertTrue(registry.isEntityRegistered(address(0)));
     }
 
     /**
-     * @dev Fuzz test with empty string inputs
+     * @dev Fuzz test with empty string inputs for stakeholders
      */
     function testFuzzEmptyStringHandling(
-        address stakeholderContract,
         address stakeholderAddress
     ) public {
-        vm.assume(stakeholderContract != address(0));
         vm.assume(stakeholderAddress != address(0));
+        vm.assume(!stakeholderManager.isRegistered(stakeholderAddress));
         
-        // Empty business license should be handled gracefully
-        registry.registerStakeholder(
-            stakeholderContract,
-            "",
+        vm.startPrank(admin);
+        // Empty business name should fail
+        vm.expectRevert("Business name required");
+        stakeholderManager.registerStakeholder(
             stakeholderAddress,
-            Stakeholder.StakeholderRole.FARMER
+            StakeholderManager.StakeholderRole.FARMER,
+            "",
+            "ValidLicense",
+            "Valid Location",
+            "Valid Certifications"
         );
         
-        assertEq(registry.getStakeholderByLicense(""), stakeholderContract);
+        // Empty business license should fail
+        vm.expectRevert("Business license required");
+        stakeholderManager.registerStakeholder(
+            stakeholderAddress,
+            StakeholderManager.StakeholderRole.FARMER,
+            "Valid Name",
+            "",
+            "Valid Location",
+            "Valid Certifications"
+        );
+        vm.stopPrank();
     }
 
     /**
@@ -486,6 +572,38 @@ contract ContractRegistryFuzz is Test {
         
         // Gas should scale reasonably with item count
         assertTrue(gasUsed > 0);
+    }
+
+    /**
+     * @dev Fuzz test for stakeholder role validation
+     * Note: StakeholderManager currently accepts all role values including NONE
+     */
+    function testFuzzStakeholderRoleValidation(
+        address stakeholderAddress,
+        uint8 roleValue
+    ) public {
+        vm.assume(stakeholderAddress != address(0));
+        vm.assume(roleValue <= 4); // Test valid enum range
+        vm.assume(!stakeholderManager.isRegistered(stakeholderAddress));
+        
+        vm.startPrank(admin);
+        
+        // All roles 0-4 should be accepted by StakeholderManager
+        // (including role 0 which is NONE)
+        stakeholderManager.registerStakeholder(
+            stakeholderAddress,
+            StakeholderManager.StakeholderRole(roleValue),
+            "Test Business",
+            string(abi.encodePacked("TestLicense", vm.toString(uint160(stakeholderAddress)))),
+            "Test Location",
+            "Test Certifications"
+        );
+        
+        // Verify the stakeholder was registered successfully
+        assertTrue(stakeholderManager.isRegistered(stakeholderAddress));
+        assertTrue(stakeholderManager.hasRole(stakeholderAddress, StakeholderManager.StakeholderRole(roleValue)));
+        
+        vm.stopPrank();
     }
 
     // ===== HELPER FUNCTIONS =====
@@ -517,11 +635,5 @@ contract ContractRegistryFuzz is Test {
         address indexed productAddress,
         address sender,
         address receiver
-    );
-    event StakeholderRegistered(
-        address indexed _stakeholderContract,
-        string indexed businessLicense,
-        address indexed stakeholderAddress,
-        Stakeholder.StakeholderRole role
     );
 }

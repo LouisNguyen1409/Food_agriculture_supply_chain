@@ -5,17 +5,15 @@ import "forge-std/Test.sol";
 import "../src/SmartContracts/ProductFactory.sol";
 import "../src/SmartContracts/Registry.sol";
 import "../src/SmartContracts/StakeholderRegistry.sol";
-import "../src/SmartContracts/StakeholderFactory.sol";
-import "../src/SmartContracts/Stakeholder.sol";
 import "../src/SmartContracts/Product.sol";
 import "./MockOracle.sol";
+import "../src/SmartContracts/StakeholderManager.sol";
 
 contract ProductFactoryFuzz is Test {
     ProductFactory public productFactory;
     Registry public registry;
     StakeholderRegistry public stakeholderRegistry;
-    StakeholderFactory public stakeholderFactory;
-    
+    StakeholderManager public stakeholderManager;
     // Mock oracles
     MockOracle public temperatureOracle;
     MockOracle public humidityOracle;
@@ -33,9 +31,9 @@ contract ProductFactoryFuzz is Test {
         vm.startPrank(admin);
         
         // Deploy core contracts
-        registry = new Registry();
-        stakeholderRegistry = new StakeholderRegistry(address(registry));
-        stakeholderFactory = new StakeholderFactory(address(registry));
+        stakeholderManager = new StakeholderManager();
+        registry = new Registry(address(stakeholderManager));
+        stakeholderRegistry = new StakeholderRegistry(address(stakeholderManager));
         
         // Deploy mock oracles with initial values
         temperatureOracle = new MockOracle(25 * 10**8, 8, 1, "Temperature");
@@ -94,16 +92,17 @@ contract ProductFactoryFuzz is Test {
             farmData = "Truncated Farm Data";
         }
         
-        // Create a farmer stakeholder first
-        vm.prank(admin);
-        stakeholderFactory.createStakeholder(
+        // Register a farmer stakeholder first
+        vm.startPrank(admin);
+        stakeholderManager.registerStakeholder(
             farmer1,
-            Stakeholder.StakeholderRole.FARMER,
+            StakeholderManager.StakeholderRole.FARMER,
             "Test Farm",
             "FARM123",
             "Farm Location",
             "Organic Certified"
         );
+        vm.stopPrank();
         
         uint256 initialProductCount = registry.getTotalProducts();
         
@@ -170,16 +169,17 @@ contract ProductFactoryFuzz is Test {
         vm.assume(productCount > 0 && productCount <= 10);
         seedValue = seedValue % 1000; // Limit seedValue to prevent overflow
         
-        // Create farmer stakeholder
-        vm.prank(admin);
-        stakeholderFactory.createStakeholder(
+        // Register farmer stakeholder
+        vm.startPrank(admin);
+        stakeholderManager.registerStakeholder(
             farmer1,
-            Stakeholder.StakeholderRole.FARMER,
+            StakeholderManager.StakeholderRole.FARMER,
             "Test Farm",
             "FARM123",
             "Farm Location",
             "Organic Certified"
         );
+        vm.stopPrank();
         
         uint256 initialCount = registry.getTotalProducts();
         
@@ -218,16 +218,17 @@ contract ProductFactoryFuzz is Test {
         uint256 minTemp,
         uint256 maxTemp
     ) public {
-        // Create farmer stakeholder
-        vm.prank(admin);
-        stakeholderFactory.createStakeholder(
+        // Register farmer stakeholder
+        vm.startPrank(admin);
+        stakeholderManager.registerStakeholder(
             farmer1,
-            Stakeholder.StakeholderRole.FARMER,
+            StakeholderManager.StakeholderRole.FARMER,
             "Test Farm",
             "FARM123",
             "Farm Location",
             "Organic Certified"
         );
+        vm.stopPrank();
         
         // Constrain temperatures to reasonable ranges
         minTemp = minTemp % 200; // 0-199
@@ -280,16 +281,17 @@ contract ProductFactoryFuzz is Test {
             farmData = "Very Long Farm Data Truncated";
         }
         
-        // Create farmer stakeholder
-        vm.prank(admin);
-        stakeholderFactory.createStakeholder(
+        // Register farmer stakeholder
+        vm.startPrank(admin);
+        stakeholderManager.registerStakeholder(
             farmer1,
-            Stakeholder.StakeholderRole.FARMER,
+            StakeholderManager.StakeholderRole.FARMER,
             "Test Farm",
             "FARM123",
             "Farm Location",
             "Organic Certified"
         );
+        vm.stopPrank();
         
         vm.prank(farmer1);
         address productAddress = productFactory.createProduct(
@@ -341,16 +343,17 @@ contract ProductFactoryFuzz is Test {
         windSpeedOracle.updatePrice(windSpeed);
         priceOracle.updatePrice(price);
         
-        // Create farmer stakeholder
-        vm.prank(admin);
-        stakeholderFactory.createStakeholder(
+        // Register farmer stakeholder
+        vm.startPrank(admin);
+        stakeholderManager.registerStakeholder(
             farmer1,
-            Stakeholder.StakeholderRole.FARMER,
+            StakeholderManager.StakeholderRole.FARMER,
             "Test Farm",
             "FARM123",
             "Farm Location",
             "Organic Certified"
         );
+        vm.stopPrank();
         
         vm.prank(farmer1);
         address productAddress = productFactory.createProduct(
@@ -380,13 +383,13 @@ contract ProductFactoryFuzz is Test {
         address stakeholderAddress
     ) public {
         vm.assume(stakeholderAddress != address(0));
-        vm.assume(roleIndex < 4); // Valid role indices: 0-3
+        vm.assume(roleIndex >= 1 && roleIndex <= 4); // Valid role indices: 1-4 for StakeholderManager
         
-        Stakeholder.StakeholderRole role = Stakeholder.StakeholderRole(roleIndex);
+        StakeholderManager.StakeholderRole role = StakeholderManager.StakeholderRole(roleIndex);
         
-        // Create stakeholder with random role
-        vm.prank(admin);
-        stakeholderFactory.createStakeholder(
+        // Register stakeholder with random role
+        vm.startPrank(admin);
+        stakeholderManager.registerStakeholder(
             stakeholderAddress,
             role,
             "Test Business",
@@ -394,10 +397,11 @@ contract ProductFactoryFuzz is Test {
             "Business Location",
             "Certifications"
         );
+        vm.stopPrank();
         
         vm.prank(stakeholderAddress);
         
-        if (role == Stakeholder.StakeholderRole.FARMER) {
+        if (role == StakeholderManager.StakeholderRole.FARMER) {
             // Should succeed for farmers
             address productAddress = productFactory.createProduct(
                 "Role Test Product",
@@ -439,13 +443,13 @@ contract ProductFactoryFuzz is Test {
         uint256 initialProductCount = registry.getTotalProducts();
         address[] memory farmers = new address[](farmerCount);
         
-        // Create multiple farmer stakeholders
+        // Register multiple farmer stakeholders
         vm.startPrank(admin);
         for (uint256 i = 0; i < farmerCount; i++) {
             farmers[i] = address(uint160(seedValue + i + 100));
-            stakeholderFactory.createStakeholder(
+            stakeholderManager.registerStakeholder(
                 farmers[i],
-                Stakeholder.StakeholderRole.FARMER,
+                StakeholderManager.StakeholderRole.FARMER,
                 string(abi.encodePacked("Farm", vm.toString(i))),
                 string(abi.encodePacked("FARM", vm.toString(i))),
                 "Farm Location",
@@ -509,16 +513,17 @@ contract ProductFactoryFuzz is Test {
         // Set specific block timestamp
         vm.warp(blockTime % (365 days * 10) + 1); // Reasonable timestamp within 10 years
         
-        // Create farmer stakeholder
-        vm.prank(admin);
-        stakeholderFactory.createStakeholder(
+        // Register farmer stakeholder
+        vm.startPrank(admin);
+        stakeholderManager.registerStakeholder(
             farmerAddress,
-            Stakeholder.StakeholderRole.FARMER,
+            StakeholderManager.StakeholderRole.FARMER,
             "Event Test Farm",
             "EVENTFARM123",
             "Event Farm Location",
             "Event Certified"
         );
+        vm.stopPrank();
         
         vm.prank(farmerAddress);
         
@@ -552,16 +557,17 @@ contract ProductFactoryFuzz is Test {
         vm.assume(productCount > 0 && productCount <= 20);
         stringLengthSeed = stringLengthSeed % 1000; // Limit to prevent overflow
         
-        // Create farmer stakeholder
-        vm.prank(admin);
-        stakeholderFactory.createStakeholder(
+        // Register farmer stakeholder
+        vm.startPrank(admin);
+        stakeholderManager.registerStakeholder(
             farmer1,
-            Stakeholder.StakeholderRole.FARMER,
+            StakeholderManager.StakeholderRole.FARMER,
             "Gas Test Farm",
             "GASFARM123",
             "Gas Farm Location",
             "Gas Certified"
         );
+        vm.stopPrank();
         
         uint256 gasStart = gasleft();
         

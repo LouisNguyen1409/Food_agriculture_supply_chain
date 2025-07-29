@@ -5,22 +5,20 @@ import "forge-std/Test.sol";
 import "../src/SmartContracts/PublicVerification.sol";
 import "../src/SmartContracts/Registry.sol";
 import "../src/SmartContracts/StakeholderRegistry.sol";
-import "../src/SmartContracts/StakeholderFactory.sol";
 import "../src/SmartContracts/ProductFactory.sol";
 import "../src/SmartContracts/ShipmentFactory.sol";
-import "../src/SmartContracts/Stakeholder.sol";
 import "../src/SmartContracts/Product.sol";
 import "../src/SmartContracts/Shipment.sol";
 import "./MockOracle.sol";
+import "../src/SmartContracts/StakeholderManager.sol";  
 
 contract PublicVerificationFuzz is Test {
     PublicVerification public publicVerification;
     Registry public registry;
     StakeholderRegistry public stakeholderRegistry;
-    StakeholderFactory public stakeholderFactory;
     ProductFactory public productFactory;
     ShipmentFactory public shipmentFactory;
-    
+    StakeholderManager public stakeholderManager;
     // Mock oracles
     MockOracle public temperatureOracle;
     MockOracle public humidityOracle;
@@ -42,9 +40,9 @@ contract PublicVerificationFuzz is Test {
         vm.startPrank(admin);
         
         // Deploy core contracts
-        registry = new Registry();
-        stakeholderRegistry = new StakeholderRegistry(address(registry));
-        stakeholderFactory = new StakeholderFactory(address(registry));
+        stakeholderManager = new StakeholderManager();
+        registry = new Registry(address(stakeholderManager));
+        stakeholderRegistry = new StakeholderRegistry(address(stakeholderManager));
         
         // Deploy mock oracles
         temperatureOracle = new MockOracle(25 * 10**8, 8, 1, "Temperature");
@@ -124,12 +122,12 @@ contract PublicVerificationFuzz is Test {
 
     function _createStakeholder(
         address stakeholderAddr,
-        Stakeholder.StakeholderRole role,
+        StakeholderManager.StakeholderRole role,
         string memory name,
         string memory license
     ) internal {
-        vm.prank(admin);
-        stakeholderFactory.createStakeholder(
+        vm.startPrank(admin);
+        stakeholderManager.registerStakeholder(
             stakeholderAddr,
             role,
             name,
@@ -137,6 +135,7 @@ contract PublicVerificationFuzz is Test {
             "Location",
             "Certifications"
         );
+        vm.stopPrank();
     }
 
     function _createProduct(
@@ -167,16 +166,17 @@ contract PublicVerificationFuzz is Test {
         Product.ProductStage currentStage = product.currentStage();
         if (currentStage == Product.ProductStage.FARM) {
             // Find a processor to advance the product
-            if (!stakeholderRegistry.isRegisteredStakeholder(processor, Stakeholder.StakeholderRole.PROCESSOR)) {
-                vm.prank(admin);
-                stakeholderFactory.createStakeholder(
+            if (!stakeholderManager.hasRole(processor, StakeholderManager.StakeholderRole.PROCESSOR)) {
+                vm.startPrank(admin);
+                stakeholderManager.registerStakeholder(
                     processor,
-                    Stakeholder.StakeholderRole.PROCESSOR,
+                    StakeholderManager.StakeholderRole.PROCESSOR,
                     "Auto Processor",
                     "AUTO_PROC",
                     "Location",
                     "Certifications"
                 );
+                vm.stopPrank();
             }
             
             vm.prank(processor);
@@ -184,16 +184,17 @@ contract PublicVerificationFuzz is Test {
         }
         
         // Ensure sender has DISTRIBUTOR role
-        if (!stakeholderRegistry.isRegisteredStakeholder(sender, Stakeholder.StakeholderRole.DISTRIBUTOR)) {
-            vm.prank(admin);
-            stakeholderFactory.createStakeholder(
+        if (!stakeholderManager.hasRole(sender, StakeholderManager.StakeholderRole.DISTRIBUTOR)) {
+            vm.startPrank(admin);
+            stakeholderManager.registerStakeholder(
                 sender,
-                Stakeholder.StakeholderRole.DISTRIBUTOR,
+                StakeholderManager.StakeholderRole.DISTRIBUTOR,
                 "Auto Distributor",
                 string(abi.encodePacked("AUTO_DIST_", vm.toString(uint160(sender)))),
                 "Location",
                 "Certifications"
             );
+            vm.stopPrank();
         }
         
         vm.prank(sender);
@@ -245,7 +246,7 @@ contract PublicVerificationFuzz is Test {
         vm.warp(blockTime % (365 days * 10) + 1);
         
         // Create farmer and product
-        _createStakeholder(farmer1, Stakeholder.StakeholderRole.FARMER, "Farm1", "FARM001");
+        _createStakeholder(farmer1, StakeholderManager.StakeholderRole.FARMER, "Farm1", "FARM001");
         address productAddr = _createProduct(farmer1, productName);
         
         vm.prank(verifier);
@@ -296,10 +297,10 @@ contract PublicVerificationFuzz is Test {
         Product.ProductStage targetStage = Product.ProductStage(stageIndex);
         
         // Create all necessary stakeholders
-        _createStakeholder(farmer1, Stakeholder.StakeholderRole.FARMER, "Farm1", "FARM001");
-        _createStakeholder(processor, Stakeholder.StakeholderRole.PROCESSOR, "Processor1", "PROC001");
-        _createStakeholder(distributor, Stakeholder.StakeholderRole.DISTRIBUTOR, "Distributor1", "DIST001");
-        _createStakeholder(retailer, Stakeholder.StakeholderRole.RETAILER, "Retailer1", "RET001");
+        _createStakeholder(farmer1, StakeholderManager.StakeholderRole.FARMER, "Farm1", "FARM001");
+        _createStakeholder(processor, StakeholderManager.StakeholderRole.PROCESSOR, "Processor1", "PROC001");
+        _createStakeholder(distributor, StakeholderManager.StakeholderRole.DISTRIBUTOR, "Distributor1", "DIST001");
+        _createStakeholder(retailer, StakeholderManager.StakeholderRole.RETAILER, "Retailer1", "RET001");
         
         address productAddr = _createProduct(farmer1, productName);
         
@@ -334,7 +335,7 @@ contract PublicVerificationFuzz is Test {
         productName = _sanitizeString(productName, "Invalid Stakeholder Test");
         
         // Create farmer and product
-        _createStakeholder(farmer1, Stakeholder.StakeholderRole.FARMER, "Farm1", "FARM001");
+        _createStakeholder(farmer1, StakeholderManager.StakeholderRole.FARMER, "Farm1", "FARM001");
         address productAddr = _createProduct(farmer1, productName);
         
         Product.ProductStage invalidStage = Product.ProductStage(invalidStageIndex);
@@ -370,9 +371,9 @@ contract PublicVerificationFuzz is Test {
         shipmentStatusIndex = shipmentStatusIndex % 4; // 0-3 for simpler statuses
         
         // Create stakeholders
-        _createStakeholder(farmer1, Stakeholder.StakeholderRole.FARMER, "Farm1", "FARM001");
-        _createStakeholder(processor, Stakeholder.StakeholderRole.PROCESSOR, "Processor1", "PROC001");
-        _createStakeholder(distributor, Stakeholder.StakeholderRole.DISTRIBUTOR, "Distributor1", "DIST001");
+        _createStakeholder(farmer1, StakeholderManager.StakeholderRole.FARMER, "Farm1", "FARM001");
+        _createStakeholder(processor, StakeholderManager.StakeholderRole.PROCESSOR, "Processor1", "PROC001");
+        _createStakeholder(distributor, StakeholderManager.StakeholderRole.DISTRIBUTOR, "Distributor1", "DIST001");
         
         address productAddr = _createProduct(farmer1, productName);
         address shipmentAddr = _createShipment(distributor, processor, productAddr, trackingNumber);
@@ -436,7 +437,7 @@ contract PublicVerificationFuzz is Test {
         productName = _sanitizeString(productName, "No Shipment Test");
         
         // Create farmer and product (no shipment)
-        _createStakeholder(farmer1, Stakeholder.StakeholderRole.FARMER, "Farm1", "FARM001");
+        _createStakeholder(farmer1, StakeholderManager.StakeholderRole.FARMER, "Farm1", "FARM001");
         address productAddr = _createProduct(farmer1, productName);
         
         vm.prank(verifier);
@@ -465,15 +466,15 @@ contract PublicVerificationFuzz is Test {
         Product.ProductStage maxStage = Product.ProductStage(maxStageIndex);
         
         // Create stakeholders
-        _createStakeholder(farmer1, Stakeholder.StakeholderRole.FARMER, "Farm1", "FARM001");
+        _createStakeholder(farmer1, StakeholderManager.StakeholderRole.FARMER, "Farm1", "FARM001");
         if (maxStage >= Product.ProductStage.PROCESSING) {
-            _createStakeholder(processor, Stakeholder.StakeholderRole.PROCESSOR, "Processor1", "PROC001");
+            _createStakeholder(processor, StakeholderManager.StakeholderRole.PROCESSOR, "Processor1", "PROC001");
         }
         if (maxStage >= Product.ProductStage.DISTRIBUTION) {
-            _createStakeholder(distributor, Stakeholder.StakeholderRole.DISTRIBUTOR, "Distributor1", "DIST001");
+            _createStakeholder(distributor, StakeholderManager.StakeholderRole.DISTRIBUTOR, "Distributor1", "DIST001");
         }
         if (maxStage >= Product.ProductStage.RETAIL) {
-            _createStakeholder(retailer, Stakeholder.StakeholderRole.RETAILER, "Retailer1", "RET001");
+            _createStakeholder(retailer, StakeholderManager.StakeholderRole.RETAILER, "Retailer1", "RET001");
         }
         
         address productAddr = _createProduct(farmer1, productName);
@@ -502,7 +503,7 @@ contract PublicVerificationFuzz is Test {
         assertEq(reportProductName, productName);
         assertEq(reportFarmer, farmer1);  // Should match the farmer we registered
         assertTrue(farmerInfo.stakeholderAddress != address(0));
-        assertEq(uint8(farmerInfo.role), uint8(Stakeholder.StakeholderRole.FARMER));
+        assertEq(uint8(farmerInfo.role), uint8(StakeholderManager.StakeholderRole.FARMER));
         
         // Check stage-specific stakeholder info
         if (maxStage >= Product.ProductStage.PROCESSING) {
@@ -562,9 +563,9 @@ contract PublicVerificationFuzz is Test {
         shipmentUpdatesCount = shipmentUpdatesCount % 4 + 1; // 1-4 updates
         
         // Create stakeholders and product
-        _createStakeholder(farmer1, Stakeholder.StakeholderRole.FARMER, "Farm1", "FARM001");
-        _createStakeholder(processor, Stakeholder.StakeholderRole.PROCESSOR, "Processor1", "PROC001");
-        _createStakeholder(distributor, Stakeholder.StakeholderRole.DISTRIBUTOR, "Distributor1", "DIST001");
+        _createStakeholder(farmer1, StakeholderManager.StakeholderRole.FARMER, "Farm1", "FARM001");
+        _createStakeholder(processor, StakeholderManager.StakeholderRole.PROCESSOR, "Processor1", "PROC001");
+        _createStakeholder(distributor, StakeholderManager.StakeholderRole.DISTRIBUTOR, "Distributor1", "DIST001");
         
         address productAddr = _createProduct(farmer1, productName);
         address shipmentAddr = _createShipment(distributor, processor, productAddr, trackingNumber);
@@ -633,9 +634,9 @@ contract PublicVerificationFuzz is Test {
         Shipment.ShipmentStatus targetStatus = Shipment.ShipmentStatus(statusIndex);
         
         // Create stakeholders and setup
-        _createStakeholder(farmer1, Stakeholder.StakeholderRole.FARMER, "Farm1", "FARM001");
-        _createStakeholder(processor, Stakeholder.StakeholderRole.PROCESSOR, "Processor1", "PROC001");
-        _createStakeholder(distributor, Stakeholder.StakeholderRole.DISTRIBUTOR, "Distributor1", "DIST001");
+        _createStakeholder(farmer1, StakeholderManager.StakeholderRole.FARMER, "Farm1", "FARM001");
+        _createStakeholder(processor, StakeholderManager.StakeholderRole.PROCESSOR, "Processor1", "PROC001");
+        _createStakeholder(distributor, StakeholderManager.StakeholderRole.DISTRIBUTOR, "Distributor1", "DIST001");
         
         address productAddr = _createProduct(farmer1, productName);
         address shipmentAddr = _createShipment(distributor, processor, productAddr, trackingNumber);
@@ -727,11 +728,11 @@ contract PublicVerificationFuzz is Test {
         
         auditResult = _sanitizeString(auditResult, "Audit passed");
         
-        Stakeholder.StakeholderRole role = Stakeholder.StakeholderRole(roleIndex);
+        StakeholderManager.StakeholderRole role = StakeholderManager.StakeholderRole(roleIndex);
         
         // Create stakeholder and product
         _createStakeholder(auditorAddr, role, "Auditor Business", "AUDIT001");
-        _createStakeholder(farmer1, Stakeholder.StakeholderRole.FARMER, "Farm1", "FARM001");
+        _createStakeholder(farmer1, StakeholderManager.StakeholderRole.FARMER, "Farm1", "FARM001");
         address productAddr = _createProduct(farmer1, "Audit Test Product");
         
         vm.prank(auditorAddr);
@@ -755,7 +756,7 @@ contract PublicVerificationFuzz is Test {
         auditResult = _sanitizeString(auditResult, "Unauthorized audit");
         
         // Create product without registering the auditor
-        _createStakeholder(farmer1, Stakeholder.StakeholderRole.FARMER, "Farm1", "FARM001");
+        _createStakeholder(farmer1, StakeholderManager.StakeholderRole.FARMER, "Farm1", "FARM001");
         address productAddr = _createProduct(farmer1, "Audit Test Product");
         
         vm.prank(unauthorizedAuditor);
@@ -779,9 +780,9 @@ contract PublicVerificationFuzz is Test {
         transportMode = _sanitizeString(transportMode, "Road");
         
         // Create stakeholders and shipment
-        _createStakeholder(farmer1, Stakeholder.StakeholderRole.FARMER, "Farm1", "FARM001");
-        _createStakeholder(processor, Stakeholder.StakeholderRole.PROCESSOR, "Processor1", "PROC001");
-        _createStakeholder(distributor, Stakeholder.StakeholderRole.DISTRIBUTOR, "Distributor1", "DIST001");
+        _createStakeholder(farmer1, StakeholderManager.StakeholderRole.FARMER, "Farm1", "FARM001");
+        _createStakeholder(processor, StakeholderManager.StakeholderRole.PROCESSOR, "Processor1", "PROC001");
+        _createStakeholder(distributor, StakeholderManager.StakeholderRole.DISTRIBUTOR, "Distributor1", "DIST001");
         
         address productAddr = _createProduct(farmer1, "Shipment Info Test");
         address shipmentAddr = _createShipment(distributor, processor, productAddr, trackingNumber);
@@ -833,9 +834,9 @@ contract PublicVerificationFuzz is Test {
         productName = _sanitizeString(productName, "Find Test Product");
         
         // Create stakeholders and shipment
-        _createStakeholder(farmer1, Stakeholder.StakeholderRole.FARMER, "Farm1", "FARM001");
-        _createStakeholder(processor, Stakeholder.StakeholderRole.PROCESSOR, "Processor1", "PROC001");
-        _createStakeholder(distributor, Stakeholder.StakeholderRole.DISTRIBUTOR, "Distributor1", "DIST001");
+        _createStakeholder(farmer1, StakeholderManager.StakeholderRole.FARMER, "Farm1", "FARM001");
+        _createStakeholder(processor, StakeholderManager.StakeholderRole.PROCESSOR, "Processor1", "PROC001");
+        _createStakeholder(distributor, StakeholderManager.StakeholderRole.DISTRIBUTOR, "Distributor1", "DIST001");
         
         address productAddr = _createProduct(farmer1, productName);
         address shipmentAddr = _createShipment(distributor, processor, productAddr, trackingNumber);
@@ -853,9 +854,9 @@ contract PublicVerificationFuzz is Test {
         trackingNumber = _sanitizeString(trackingNumber, "FIND_BY_TRACK");
         
         // Create stakeholders and shipment
-        _createStakeholder(farmer1, Stakeholder.StakeholderRole.FARMER, "Farm1", "FARM001");
-        _createStakeholder(processor, Stakeholder.StakeholderRole.PROCESSOR, "Processor1", "PROC001");
-        _createStakeholder(distributor, Stakeholder.StakeholderRole.DISTRIBUTOR, "Distributor1", "DIST001");
+        _createStakeholder(farmer1, StakeholderManager.StakeholderRole.FARMER, "Farm1", "FARM001");
+        _createStakeholder(processor, StakeholderManager.StakeholderRole.PROCESSOR, "Processor1", "PROC001");
+        _createStakeholder(distributor, StakeholderManager.StakeholderRole.DISTRIBUTOR, "Distributor1", "DIST001");
         
         address productAddr = _createProduct(farmer1, "Find By Track Test");
         address shipmentAddr = _createShipment(distributor, processor, productAddr, trackingNumber);

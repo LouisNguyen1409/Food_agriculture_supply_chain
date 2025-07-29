@@ -5,20 +5,18 @@ import "forge-std/Test.sol";
 import "../src/SmartContracts/ShipmentFactory.sol";
 import "../src/SmartContracts/Registry.sol";
 import "../src/SmartContracts/StakeholderRegistry.sol";
-import "../src/SmartContracts/StakeholderFactory.sol";
 import "../src/SmartContracts/ProductFactory.sol";
-import "../src/SmartContracts/Stakeholder.sol";
 import "../src/SmartContracts/Product.sol";
 import "../src/SmartContracts/Shipment.sol";
 import "./MockOracle.sol";
+import "../src/SmartContracts/StakeholderManager.sol";
 
 contract ShipmentFactoryFuzz is Test {
     ShipmentFactory public shipmentFactory;
     Registry public registry;
     StakeholderRegistry public stakeholderRegistry;
-    StakeholderFactory public stakeholderFactory;
     ProductFactory public productFactory;
-    
+    StakeholderManager public stakeholderManager;
     // Mock oracles
     MockOracle public temperatureOracle;
     MockOracle public humidityOracle;
@@ -47,9 +45,9 @@ contract ShipmentFactoryFuzz is Test {
         vm.startPrank(admin);
         
         // Deploy core contracts
-        registry = new Registry();
-        stakeholderRegistry = new StakeholderRegistry(address(registry));
-        stakeholderFactory = new StakeholderFactory(address(registry));
+        stakeholderManager = new StakeholderManager();
+        registry = new Registry(address(stakeholderManager));
+        stakeholderRegistry = new StakeholderRegistry(address(stakeholderManager));
         
         // Deploy mock oracles
         temperatureOracle = new MockOracle(25 * 10**8, 8, 1, "Temperature");
@@ -122,12 +120,12 @@ contract ShipmentFactoryFuzz is Test {
 
     function _createStakeholder(
         address stakeholderAddr,
-        Stakeholder.StakeholderRole role,
+        StakeholderManager.StakeholderRole role,
         string memory name,
         string memory license
     ) internal {
         vm.prank(admin);
-        stakeholderFactory.createStakeholder(
+        stakeholderManager.registerStakeholder(
             stakeholderAddr,
             role,
             name,
@@ -209,12 +207,15 @@ contract ShipmentFactoryFuzz is Test {
         vm.assume(receiver != address(0));
         
         // Setup stakeholders and product
-        _createStakeholder(farmer1, Stakeholder.StakeholderRole.FARMER, "Farm1", "FARM001");
-        _createStakeholder(distributor1, Stakeholder.StakeholderRole.DISTRIBUTOR, "Dist1", "DIST001");
-        _createStakeholder(processor, Stakeholder.StakeholderRole.PROCESSOR, "Proc1", "PROC001");
+        _createStakeholder(farmer1, StakeholderManager.StakeholderRole.FARMER, "Farm1", "FARM001");
+        _createStakeholder(distributor1, StakeholderManager.StakeholderRole.DISTRIBUTOR, "Dist1", "DIST001");
+        _createStakeholder(processor, StakeholderManager.StakeholderRole.PROCESSOR, "Proc1", "PROC001");
         
         address productAddr = _createProduct(farmer1, "Test Product");
         _advanceProductToProcessing(productAddr, processor);
+        
+        // Register receiver as a stakeholder (could be any role)
+        _createStakeholder(receiver, StakeholderManager.StakeholderRole.RETAILER, "Receiver Business", "REC001");
         
         vm.prank(distributor1);
         
@@ -256,16 +257,16 @@ contract ShipmentFactoryFuzz is Test {
         transportMode = _sanitizeString(transportMode, "Truck");
         
         // Setup farmer and product
-        _createStakeholder(farmer1, Stakeholder.StakeholderRole.FARMER, "Farm1", "FARM001");
-        _createStakeholder(processor, Stakeholder.StakeholderRole.PROCESSOR, "Proc1", "PROC001");
+        _createStakeholder(farmer1, StakeholderManager.StakeholderRole.FARMER, "Farm1", "FARM001");
+        _createStakeholder(processor, StakeholderManager.StakeholderRole.PROCESSOR, "Proc1", "PROC001");
         address productAddr = _createProduct(farmer1, "Test Product");
         _advanceProductToProcessing(productAddr, processor);
         
         // Register unauthorizedUser as non-distributor (farmer/processor/retailer)
-        Stakeholder.StakeholderRole[] memory nonDistributorRoles = new Stakeholder.StakeholderRole[](3);
-        nonDistributorRoles[0] = Stakeholder.StakeholderRole.FARMER;
-        nonDistributorRoles[1] = Stakeholder.StakeholderRole.PROCESSOR;
-        nonDistributorRoles[2] = Stakeholder.StakeholderRole.RETAILER;
+        StakeholderManager.StakeholderRole[] memory nonDistributorRoles = new StakeholderManager.StakeholderRole[](3);
+        nonDistributorRoles[0] = StakeholderManager.StakeholderRole.FARMER;
+        nonDistributorRoles[1] = StakeholderManager.StakeholderRole.PROCESSOR;
+        nonDistributorRoles[2] = StakeholderManager.StakeholderRole.RETAILER;
         
         uint256 roleIndex = uint256(uint160(unauthorizedUser)) % 3;
         _createStakeholder(
@@ -306,8 +307,8 @@ contract ShipmentFactoryFuzz is Test {
         transportMode = _sanitizeString(transportMode, "Truck");
         
         // Setup product
-        _createStakeholder(farmer1, Stakeholder.StakeholderRole.FARMER, "Farm1", "FARM001");
-        _createStakeholder(processor, Stakeholder.StakeholderRole.PROCESSOR, "Proc1", "PROC001");
+        _createStakeholder(farmer1, StakeholderManager.StakeholderRole.FARMER, "Farm1", "FARM001");
+        _createStakeholder(processor, StakeholderManager.StakeholderRole.PROCESSOR, "Proc1", "PROC001");
         address productAddr = _createProduct(farmer1, "Test Product");
         _advanceProductToProcessing(productAddr, processor);
         
@@ -334,8 +335,8 @@ contract ShipmentFactoryFuzz is Test {
         vm.assume(receiver != address(0));
         
         // Setup stakeholders
-        _createStakeholder(farmer1, Stakeholder.StakeholderRole.FARMER, "Farm1", "FARM001");
-        _createStakeholder(distributor1, Stakeholder.StakeholderRole.DISTRIBUTOR, "Dist1", "DIST001");
+        _createStakeholder(farmer1, StakeholderManager.StakeholderRole.FARMER, "Farm1", "FARM001");
+        _createStakeholder(distributor1, StakeholderManager.StakeholderRole.DISTRIBUTOR, "Dist1", "DIST001");
         
         // Create product but don't advance it to processing stage
         address productAddr = _createProduct(farmer1, "Test Product");
@@ -367,7 +368,7 @@ contract ShipmentFactoryFuzz is Test {
         transportMode = _sanitizeString(transportMode, "Truck");
         
         // Setup distributor
-        _createStakeholder(distributor1, Stakeholder.StakeholderRole.DISTRIBUTOR, "Dist1", "DIST001");
+        _createStakeholder(distributor1, StakeholderManager.StakeholderRole.DISTRIBUTOR, "Dist1", "DIST001");
         
         vm.prank(distributor1);
         // This should revert when trying to call Product interface functions on non-contract
@@ -395,9 +396,9 @@ contract ShipmentFactoryFuzz is Test {
         transportMode = _sanitizeString(transportMode, "Truck");
         
         // Setup stakeholders
-        _createStakeholder(farmer1, Stakeholder.StakeholderRole.FARMER, "Farm1", "FARM001");
-        _createStakeholder(distributor1, Stakeholder.StakeholderRole.DISTRIBUTOR, "Dist1", "DIST001");
-        _createStakeholder(processor, Stakeholder.StakeholderRole.PROCESSOR, "Proc1", "PROC001");
+        _createStakeholder(farmer1, StakeholderManager.StakeholderRole.FARMER, "Farm1", "FARM001");
+        _createStakeholder(distributor1, StakeholderManager.StakeholderRole.DISTRIBUTOR, "Dist1", "DIST001");
+        _createStakeholder(processor, StakeholderManager.StakeholderRole.PROCESSOR, "Proc1", "PROC001");
         
         address productAddr = _createProduct(farmer1, "Test Product");
         _advanceProductToProcessing(productAddr, processor);
@@ -407,6 +408,11 @@ contract ShipmentFactoryFuzz is Test {
         for (uint256 i = 0; i < shipmentCount; i++) {
             string memory trackingNumber = string(abi.encodePacked(baseTrackingNumber, vm.toString(i)));
             address receiver = address(uint160(0x1000 + i));
+            
+            // Register each receiver as a stakeholder
+            _createStakeholder(receiver, StakeholderManager.StakeholderRole.RETAILER, 
+                string(abi.encodePacked("Receiver", vm.toString(i))), 
+                string(abi.encodePacked("REC", vm.toString(i))));
             
             vm.prank(distributor1);
             address shipmentAddr = shipmentFactory.createShipment(
@@ -449,13 +455,17 @@ contract ShipmentFactoryFuzz is Test {
         vm.assume(receiver2 != address(0));
         
         // Setup stakeholders
-        _createStakeholder(farmer1, Stakeholder.StakeholderRole.FARMER, "Farm1", "FARM001");
-        _createStakeholder(distributor1, Stakeholder.StakeholderRole.DISTRIBUTOR, "Dist1", "DIST001");
-        _createStakeholder(distributor2, Stakeholder.StakeholderRole.DISTRIBUTOR, "Dist2", "DIST002");
-        _createStakeholder(processor, Stakeholder.StakeholderRole.PROCESSOR, "Proc1", "PROC001");
+        _createStakeholder(farmer1, StakeholderManager.StakeholderRole.FARMER, "Farm1", "FARM001");
+        _createStakeholder(distributor1, StakeholderManager.StakeholderRole.DISTRIBUTOR, "Dist1", "DIST001");
+        _createStakeholder(distributor2, StakeholderManager.StakeholderRole.DISTRIBUTOR, "Dist2", "DIST002");
+        _createStakeholder(processor, StakeholderManager.StakeholderRole.PROCESSOR, "Proc1", "PROC001");
         
         address productAddr = _createProduct(farmer1, "Test Product");
         _advanceProductToProcessing(productAddr, processor);
+        
+        // Register receivers as stakeholders
+        _createStakeholder(receiver1, StakeholderManager.StakeholderRole.RETAILER, "Receiver1", "REC001");
+        _createStakeholder(receiver2, StakeholderManager.StakeholderRole.RETAILER, "Receiver2", "REC002");
         
         // Create shipment by first distributor
         vm.prank(distributor1);
@@ -496,9 +506,9 @@ contract ShipmentFactoryFuzz is Test {
         transportMode = _sanitizeString(transportMode, "Truck");
         
         // Setup stakeholders and product
-        _createStakeholder(farmer1, Stakeholder.StakeholderRole.FARMER, "Farm1", "FARM001");
-        _createStakeholder(distributor1, Stakeholder.StakeholderRole.DISTRIBUTOR, "Dist1", "DIST001");
-        _createStakeholder(processor, Stakeholder.StakeholderRole.PROCESSOR, "Proc1", "PROC001");
+        _createStakeholder(farmer1, StakeholderManager.StakeholderRole.FARMER, "Farm1", "FARM001");
+        _createStakeholder(distributor1, StakeholderManager.StakeholderRole.DISTRIBUTOR, "Dist1", "DIST001");
+        _createStakeholder(processor, StakeholderManager.StakeholderRole.PROCESSOR, "Proc1", "PROC001");
         
         address productAddr = _createProduct(farmer1, "Test Product");
         _advanceProductToProcessing(productAddr, processor);
@@ -524,9 +534,9 @@ contract ShipmentFactoryFuzz is Test {
         vm.assume(receiver != address(0));
         
         // Setup stakeholders and product
-        _createStakeholder(farmer1, Stakeholder.StakeholderRole.FARMER, "Farm1", "FARM001");
-        _createStakeholder(distributor1, Stakeholder.StakeholderRole.DISTRIBUTOR, "Dist1", "DIST001");
-        _createStakeholder(processor, Stakeholder.StakeholderRole.PROCESSOR, "Proc1", "PROC001");
+        _createStakeholder(farmer1, StakeholderManager.StakeholderRole.FARMER, "Farm1", "FARM001");
+        _createStakeholder(distributor1, StakeholderManager.StakeholderRole.DISTRIBUTOR, "Dist1", "DIST001");
+        _createStakeholder(processor, StakeholderManager.StakeholderRole.PROCESSOR, "Proc1", "PROC001");
         
         address productAddr = _createProduct(farmer1, "Test Product");
         _advanceProductToProcessing(productAddr, processor);
@@ -554,12 +564,15 @@ contract ShipmentFactoryFuzz is Test {
         string memory longTransportMode = "VeryLongTransportModeNameThatExceedsNormalLimits123456789012345678901234567890";
         
         // Setup stakeholders and product
-        _createStakeholder(farmer1, Stakeholder.StakeholderRole.FARMER, "Farm1", "FARM001");
-        _createStakeholder(distributor1, Stakeholder.StakeholderRole.DISTRIBUTOR, "Dist1", "DIST001");
-        _createStakeholder(processor, Stakeholder.StakeholderRole.PROCESSOR, "Proc1", "PROC001");
+        _createStakeholder(farmer1, StakeholderManager.StakeholderRole.FARMER, "Farm1", "FARM001");
+        _createStakeholder(distributor1, StakeholderManager.StakeholderRole.DISTRIBUTOR, "Dist1", "DIST001");
+        _createStakeholder(processor, StakeholderManager.StakeholderRole.PROCESSOR, "Proc1", "PROC001");
         
         address productAddr = _createProduct(farmer1, "Test Product");
         _advanceProductToProcessing(productAddr, processor);
+        
+        // Register receiver as stakeholder
+        _createStakeholder(receiver, StakeholderManager.StakeholderRole.RETAILER, "Receiver", "REC001");
         
         vm.prank(distributor1);
         address shipmentAddr = shipmentFactory.createShipment(
@@ -590,12 +603,15 @@ contract ShipmentFactoryFuzz is Test {
         vm.assume(receiver != address(0));
         
         // Setup stakeholders and product
-        _createStakeholder(farmer1, Stakeholder.StakeholderRole.FARMER, "Farm1", "FARM001");
-        _createStakeholder(distributor1, Stakeholder.StakeholderRole.DISTRIBUTOR, "Dist1", "DIST001");
-        _createStakeholder(processor, Stakeholder.StakeholderRole.PROCESSOR, "Proc1", "PROC001");
+        _createStakeholder(farmer1, StakeholderManager.StakeholderRole.FARMER, "Farm1", "FARM001");
+        _createStakeholder(distributor1, StakeholderManager.StakeholderRole.DISTRIBUTOR, "Dist1", "DIST001");
+        _createStakeholder(processor, StakeholderManager.StakeholderRole.PROCESSOR, "Proc1", "PROC001");
         
         address productAddr = _createProduct(farmer1, "Test Product");
         _advanceProductToProcessing(productAddr, processor);
+        
+        // Register receiver as stakeholder
+        _createStakeholder(receiver, StakeholderManager.StakeholderRole.RETAILER, "Receiver", "REC001");
         
         vm.prank(distributor1);
         
@@ -647,12 +663,15 @@ contract ShipmentFactoryFuzz is Test {
         vm.assume(receiver != address(0));
         
         // Setup stakeholders and product
-        _createStakeholder(farmer1, Stakeholder.StakeholderRole.FARMER, "Farm1", "FARM001");
-        _createStakeholder(distributor1, Stakeholder.StakeholderRole.DISTRIBUTOR, "Dist1", "DIST001");
-        _createStakeholder(processor, Stakeholder.StakeholderRole.PROCESSOR, "Proc1", "PROC001");
+        _createStakeholder(farmer1, StakeholderManager.StakeholderRole.FARMER, "Farm1", "FARM001");
+        _createStakeholder(distributor1, StakeholderManager.StakeholderRole.DISTRIBUTOR, "Dist1", "DIST001");
+        _createStakeholder(processor, StakeholderManager.StakeholderRole.PROCESSOR, "Proc1", "PROC001");
         
         address productAddr = _createProduct(farmer1, "Test Product");
         _advanceProductToProcessing(productAddr, processor);
+        
+        // Register receiver as stakeholder
+        _createStakeholder(receiver, StakeholderManager.StakeholderRole.RETAILER, "Receiver", "REC001");
         
         uint256 initialShipmentCount = registry.getTotalShipments();
         
