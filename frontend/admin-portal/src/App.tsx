@@ -88,7 +88,7 @@ function App() {
         <Router>
             <div className="App">
                 <header className="app-header">
-                    <h1>Agricultural Supply Chain - Public Portal</h1>
+                    <h1>Agricultural Supply Chain - Admin Portal</h1>
                     <div className="header-right">
                         <span className="network-badge">
                             ChainID: {chainId || "Not Connected"}
