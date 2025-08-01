@@ -180,6 +180,43 @@ main {
   padding: 20px 0;
 }
 
+/* Account Switcher Container */
+.account-switcher-container {
+  background-color: #f9f9f9;
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 25px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+
+.role-info {
+  margin-top: 15px;
+  padding: 15px;
+  background-color: #e8f5e9;
+  border-left: 4px solid #2e7d32;
+  border-radius: 4px;
+}
+
+.role-info p {
+  font-weight: 500;
+  margin: 0 0 10px 0;
+  color: #2e7d32;
+}
+
+.role-info ul {
+  margin: 0;
+  padding: 0 0 0 20px;
+}
+
+.role-info li {
+  margin-bottom: 8px;
+  line-height: 1.4;
+}
+
+.role-info strong {
+  color: #1a4731;
+}
+
 /* Home Page */
 .home-container {
   padding: 1rem;

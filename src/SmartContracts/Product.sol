@@ -124,9 +124,15 @@ contract Product {
         address _priceFeed
     ) {
         require(bytes(_name).length > 0, "Product name cannot be empty");
-        require(bytes(_description).length > 0, "Product description cannot be empty");
-        require(bytes(_location).length > 0, "Product location cannot be empty");
-        
+        require(
+            bytes(_description).length > 0,
+            "Product description cannot be empty"
+        );
+        require(
+            bytes(_location).length > 0,
+            "Product location cannot be empty"
+        );
+
         name = _name;
         description = _description;
         minCTemperature = _minCTemperature;
@@ -191,7 +197,9 @@ contract Product {
         string calldata _distributionData
     )
         external
-        onlyRegisteredStakeholder(StakeholderManager.StakeholderRole.DISTRIBUTOR)
+        onlyRegisteredStakeholder(
+            StakeholderManager.StakeholderRole.DISTRIBUTOR
+        )
         validStageTransition(ProductStage.DISTRIBUTION)
         nonEmptyString(_distributionData)
     {

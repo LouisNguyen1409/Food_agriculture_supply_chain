@@ -6,6 +6,7 @@ import "./styles/pages.css"
 
 // Import components and pages
 import { Home, Verify, Track, CreateProduct, CreateShipment } from "./pages"
+import AccountSwitcher from "./components/AccountSwitcher"
 
 // Network configuration
 const NETWORK_CONFIGS = {
@@ -81,22 +82,7 @@ function App() {
         }
     }, [])
 
-    // Connect wallet function
-    const connectWallet = async () => {
-        if (window.ethereum) {
-            try {
-                const accounts = (await window.ethereum.request({
-                    method: "eth_requestAccounts",
-                })) as string[]
-                setAccount(accounts[0])
-                setIsConnected(true)
-            } catch (error) {
-                console.error("Error connecting wallet:", error)
-            }
-        } else {
-            alert("Please install MetaMask or another Ethereum wallet")
-        }
-    }
+    // Connect wallet function is now handled by the AccountSwitcher component
 
     return (
         <Router>
@@ -104,28 +90,23 @@ function App() {
                 <header className="app-header">
                     <h1>Agricultural Supply Chain - Public Portal</h1>
                     <div className="header-right">
-                        {isConnected ? (
-                            <div className="wallet-info">
-                                <span className="wallet-status connected">
-                                    Connected: {account.substring(0, 6)}...
-                                    {account.substring(38)}
-                                </span>
-                                <span className="network-badge">
-                                    ChainID: {chainId}
-                                </span>
-                            </div>
-                        ) : (
-                            <button
-                                className="connect-wallet"
-                                onClick={connectWallet}
-                            >
-                                Connect Wallet
-                            </button>
-                        )}
+                        <span className="network-badge">
+                            ChainID: {chainId || "Not Connected"}
+                        </span>
                     </div>
                 </header>
 
                 <main>
+                    <div className="account-switcher-container">
+                        <AccountSwitcher />
+                        <div className="role-info">
+                            <p>Use these accounts for the following roles:</p>
+                            <ul>
+                                <li><strong>Account 0</strong> (0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266): FARMER - Use for creating products</li>
+                                <li><strong>Account 1</strong> (0x70997970C51812dc3A010C7d01b50e0d17dc79C8): DISTRIBUTOR - Use for creating shipments</li>
+                            </ul>
+                        </div>
+                    </div>
                     <nav className="nav-links">
                         <ul>
                             <li>

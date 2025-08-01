@@ -8,11 +8,41 @@ async function main() {
     const signer = await provider.getSigner(0)
     const address = await signer.getAddress()
 
-    console.log(`Registering address ${address} as a farmer...`)
+    console.log(`Using address: ${address}`)
+    console.log("Getting contract addresses...")
 
-    // StakeholderManager contract with actual address from deployments
+    // Get ProductFactory first to retrieve other contract addresses
+    const productFactoryAddress = "0x2279B7A0a67DB372996a5FaB50D91eAA73d2eBe6"
+    const productFactoryABI = [
+        "function stakeholderRegistry() view returns (address)",
+    ]
+
+    const productFactory = new ethers.Contract(
+        productFactoryAddress,
+        productFactoryABI,
+        provider
+    )
+
+    // Get StakeholderRegistry address from ProductFactory
+    const stakeholderRegistryAddress =
+        await productFactory.stakeholderRegistry()
+    console.log(`StakeholderRegistry address: ${stakeholderRegistryAddress}`)
+
+    // Get StakeholderManager address from StakeholderRegistry
+    const stakeholderRegistryABI = [
+        "function stakeholderManager() view returns (address)",
+    ]
+    const stakeholderRegistry = new ethers.Contract(
+        stakeholderRegistryAddress,
+        stakeholderRegistryABI,
+        provider
+    )
+
     const stakeholderManagerAddress =
-        "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+        await stakeholderRegistry.stakeholderManager()
+    console.log(`StakeholderManager address: ${stakeholderManagerAddress}`)
+
+    console.log(`Registering address ${address} as a farmer...`)
 
     // In the contract, StakeholderRole enum is defined as:
     // enum StakeholderRole { NONE(0), FARMER(1), PROCESSOR(2), RETAILER(3), DISTRIBUTOR(4) }
@@ -70,13 +100,25 @@ async function main() {
     } catch (error) {
         console.error("Error registering as a farmer:", error)
 
-        if (error.message.includes("execution reverted")) {
+        if (error.message && error.message.includes("execution reverted")) {
             console.log("\nPossible reasons for failure:")
             console.log("1. Only an admin can register stakeholders")
             console.log(
                 "2. Your Hardhat node might have restarted and lost deployment state"
             )
             console.log("3. The business license may already be registered")
+        }
+
+        // For ethers v6, we might also get a different error structure
+        if (error.code === "CALL_EXCEPTION") {
+            console.log("\nContract call failed. Make sure:")
+            console.log(
+                "1. Your contracts are properly deployed to the local Hardhat network"
+            )
+            console.log(
+                "2. The account you're using has admin privileges to register stakeholders"
+            )
+            console.log("3. You're using the correct contract addresses")
         }
     }
 }

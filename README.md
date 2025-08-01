@@ -10,7 +10,10 @@ npm start
 
 npx hardhat deploy --tags clean
 
-node scripts/register-stakeholder.js
+REMEMBER TO CHECK THE ADDRESS IN THE SCRIPTS AND CHANGE IT IF NEEDED
+node scripts/register-farmer.js 
+node scripts/register-distributor.js   
+node scripts/register-processor-update-product-state.js (CHANGE ADDRESS OF PRODUCT IN THE SCRIPTS) 
 
 # Deployed Contracts
 
