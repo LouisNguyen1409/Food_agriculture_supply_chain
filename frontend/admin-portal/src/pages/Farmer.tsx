@@ -20,7 +20,12 @@ const productBatchABI = [
 const offerManagerABI = [
   "function acceptOffer(uint256) external",
   "function getAvailableOffers(address) external view returns (uint256[])",
+  "function getOffersByType(uint8) external view returns (uint256[])",
   "function getOfferInfo(uint256) external view returns (address, address, uint256, uint256, uint256, uint8, uint8, string, uint256, address)",
+  "function grantRole(address, uint8) external",
+  "function hasRole(address, uint8) external view returns (bool)",
+  "function isActive(address) external view returns (bool)",
+  "function activateAccount(address) external",
   "event OfferAccepted(uint256 indexed offerId, address indexed acceptor, uint256 price)"
 ];
 
@@ -87,6 +92,7 @@ interface Offer {
   terms: string;
   expiresAt: number;
   acceptedBy: string;
+  ownsBatch?: boolean; // Added for BUY_OFFER
 }
 
 const formatAddress = (address: string): string => {
@@ -244,6 +250,7 @@ const Farmer = () => {
       
       // Check and grant ProductBatch role if needed
       await checkAndGrantProductBatchRole();
+      await checkAndGrantOfferManagerRole();
       
       await loadBatches(productBatchContract);
       await loadOffers(offerManagerContract);
@@ -338,15 +345,49 @@ const Farmer = () => {
     }
   };
 
+  const checkBatchOwnership = async (batchId: number): Promise<boolean> => {
+    try {
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
+      const contract = new ethers.Contract(
+        CONTRACT_ADDRESSES.productBatch,
+        productBatchABI,
+        signer
+      );
+      
+      const batchInfo = await contract.getBatchInfo(batchId);
+      const currentOwner = batchInfo[1]; // currentOwner is at index 1
+      const isOwner = currentOwner.toLowerCase() === account.toLowerCase();
+      
+      console.log(`Batch ${batchId} ownership check:`, {
+        batchId,
+        currentOwner,
+        account,
+        isOwner
+      });
+      
+      return isOwner;
+    } catch (error) {
+      console.error("Error checking batch ownership:", error);
+      return false;
+    }
+  };
+
   const loadOffers = async (contract: ethers.Contract) => {
     try {
-      const offerIds = await contract.getAvailableOffers(account);
+      // Get all offer types that farmers might be interested in
+      const buyOfferIds = await contract.getOffersByType(0); // BUY_OFFER = 0
+      const sellOfferIds = await contract.getOffersByType(1); // SELL_OFFER = 1
+      const contractOfferIds = await contract.getOffersByType(2); // CONTRACT_OFFER = 2
+      
+      // Combine all offer IDs
+      const allOfferIds = [...buyOfferIds, ...sellOfferIds, ...contractOfferIds];
       const offerData: Offer[] = [];
       
-      for (const offerId of offerIds) {
+      for (const offerId of allOfferIds) {
         try {
           const offerInfo = await contract.getOfferInfo(offerId);
-          offerData.push({
+          const offer: Offer = {
             id: Number(offerId),
             creator: offerInfo[0],
             counterparty: offerInfo[1],
@@ -358,7 +399,14 @@ const Farmer = () => {
             terms: offerInfo[7],
             expiresAt: Number(offerInfo[8]),
             acceptedBy: offerInfo[9]
-          });
+          };
+          
+          // Check if farmer owns the batch for BUY_OFFER
+          if (offer.offerType === 0 && offer.batchId > 0) {
+            offer.ownsBatch = await checkBatchOwnership(offer.batchId);
+          }
+          
+          offerData.push(offer);
         } catch (error) {
           console.log(`Offer ${offerId} not found`);
         }
@@ -723,6 +771,43 @@ const Farmer = () => {
     }
   };
 
+  const checkAndGrantOfferManagerRole = async () => {
+    if (!isConnected || !account) return;
+    
+    try {
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
+      
+      const offerManagerContract = new ethers.Contract(
+        CONTRACT_ADDRESSES.offerManager,
+        offerManagerABI,
+        signer
+      );
+      
+      // Check if user has role in OfferManager
+      const hasFarmerInOfferManager = await offerManagerContract.hasRole(account, 1);
+      const isActiveInOfferManager = await offerManagerContract.isActive(account);
+      
+      console.log("OfferManager role check for account", account, ":", {
+        hasFarmer: hasFarmerInOfferManager,
+        isActive: isActiveInOfferManager
+      });
+      
+      // If user doesn't have role in OfferManager, show error
+      if (!hasFarmerInOfferManager || !isActiveInOfferManager) {
+        console.log("User doesn't have role in OfferManager");
+        setError("You don't have the FARMER role in OfferManager. Please contact an admin to approve your registration.");
+        setRoleGrantFailed(true);
+      } else {
+        console.log("✅ Account has FARMER role in OfferManager:", account);
+      }
+      
+    } catch (error) {
+      console.error("Error checking OfferManager role:", error);
+      setError("Error checking role status. Please try again.");
+    }
+  };
+
   const checkAndGrantProductBatchRole = async () => {
     if (!isConnected || !account) return;
     
@@ -877,6 +962,17 @@ const Farmer = () => {
                     <li>Wait for admin approval</li>
                     <li>Refresh this page once approved</li>
                   </ol>
+                  
+                  <div className="testing-actions">
+                    <h4>For Testing (Admin Only)</h4>
+                    <p>If you have admin privileges, you can manually grant roles:</p>
+                    <div style={{ background: '#f8f9fa', padding: '10px', borderRadius: '4px', marginTop: '10px' }}>
+                      <p><strong>ProductBatch:</strong> grantRole({account}, 1)</p>
+                      <p><strong>Registry:</strong> grantRole({account}, 1)</p>
+                      <p><strong>ShipmentTracker:</strong> grantRole({account}, 1)</p>
+                      <p><strong>OfferManager:</strong> grantRole({account}, 1)</p>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
@@ -1216,17 +1312,38 @@ const Farmer = () => {
             <div className="section-header">
               <h2>Available Offers</h2>
             </div>
+            <p>Showing all open offers in the marketplace. As a FARMER, you can only accept:</p>
+            <ul style={{ marginBottom: '20px', color: '#666' }}>
+              <li><strong>BUY_OFFER:</strong> Only if you own the batch being offered</li>
+              <li><strong>CONTRACT_OFFER:</strong> Contract farming offers (you can accept these)</li>
+              <li><strong>SELL_OFFER:</strong> You cannot accept these (only processors/distributors/retailers can)</li>
+            </ul>
             
+            <div style={{ background: '#f0f8ff', padding: '15px', borderRadius: '8px', marginBottom: '20px' }}>
+              <h4>Your Owned Batches:</h4>
+              {batches.length > 0 ? (
+                <ul style={{ margin: '10px 0', paddingLeft: '20px' }}>
+                  {batches.map(batch => (
+                    <li key={batch.id}>
+                      <strong>Batch #{batch.id}:</strong> {batch.name} - {batch.quantity} units at {ethers.formatEther(batch.basePrice.toString())} ETH
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p style={{ color: '#666', fontStyle: 'italic' }}>You don't own any batches yet. Create a batch first to accept BUY_OFFER.</p>
+              )}
+            </div>
+
             <div className="data-table">
               <table>
                 <thead>
                   <tr>
                     <th>ID</th>
+                    <th>Type</th>
                     <th>Creator</th>
                     <th>Batch ID</th>
                     <th>Price (ETH)</th>
                     <th>Quantity</th>
-                    <th>Type</th>
                     <th>Status</th>
                     <th>Expires</th>
                     <th>Actions</th>
@@ -1236,27 +1353,57 @@ const Farmer = () => {
                   {offers.map((offer) => (
                     <tr key={offer.id}>
                       <td>{offer.id}</td>
+                      <td>{getOfferTypeName(offer.offerType)}</td>
                       <td>{formatAddress(offer.creator)}</td>
                       <td>{offer.batchId}</td>
                       <td>{ethers.formatEther(offer.price.toString())}</td>
                       <td>{offer.quantity}</td>
-                      <td>{getOfferTypeName(offer.offerType)}</td>
                       <td>{getOfferStatusName(offer.status)}</td>
-                      <td>{new Date(offer.expiresAt * 1000).toLocaleDateString()}</td>
+                      <td>{new Date(offer.expiresAt * 1000).toLocaleString()}</td>
                       <td>
-                        {offer.status === 0 && (
-                          <button 
-                            onClick={() => handleAcceptOffer(offer.id)}
-                            className="action-button accept"
-                          >
-                            Accept
-                          </button>
+                        {offer.status === 0 && offer.creator.toLowerCase() !== account.toLowerCase() && (
+                          <>
+                            {offer.offerType === 0 && (
+                              <>
+                                {offer.ownsBatch ? (
+                                  <button 
+                                    onClick={() => handleAcceptOffer(offer.id)}
+                                    className="action-button accept"
+                                    disabled={loading}
+                                  >
+                                    Accept Buy Offer
+                                  </button>
+                                ) : (
+                                  <span className="offer-note error">You don't own batch #{offer.batchId}</span>
+                                )}
+                              </>
+                            )}
+                            {offer.offerType === 1 && (
+                              <span className="offer-note error">Farmers cannot accept SELL_OFFER</span>
+                            )}
+                            {offer.offerType === 2 && (
+                              <button 
+                                onClick={() => handleAcceptOffer(offer.id)}
+                                className="action-button accept"
+                                disabled={loading}
+                              >
+                                Accept Contract
+                              </button>
+                            )}
+                          </>
+                        )}
+                        {offer.creator.toLowerCase() === account.toLowerCase() && (
+                          <span className="own-offer">Your Offer</span>
                         )}
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+              
+              {offers.length === 0 && (
+                <p className="no-data-message">No offers available in the marketplace. Create a batch and list it for sale to get started.</p>
+              )}
             </div>
           </div>
         )}

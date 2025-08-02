@@ -10,6 +10,7 @@ import Stakeholders from "./pages/Stakeholders"
 import StakeholderRegistration from "./pages/StakeholderRegistration"
 import Farmer from "./pages/Farmer"
 import Shipper from "./pages/Shipper"
+import Processor from "./pages/Processor"
 import AccountSwitcher from "./components/AccountSwitcher"
 
 // Network configuration
@@ -121,6 +122,9 @@ function App() {
                             <li>
                                 <Link to="/shipper">Shipper Dashboard</Link>
                             </li>
+                            <li>
+                                <Link to="/processor">Processor Dashboard</Link>
+                            </li>
                         </ul>
                     </nav>
 
@@ -130,6 +134,7 @@ function App() {
                         <Route path="/register" element={<StakeholderRegistration />} />
                         <Route path="/farmer" element={<Farmer />} />
                         <Route path="/shipper" element={<Shipper />} />
+                        <Route path="/processor" element={<Processor />} />
                     </Routes>
                 </main>
 
