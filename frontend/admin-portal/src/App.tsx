@@ -164,8 +164,7 @@ function App() {
         if (!isUserActive) {
             return [
                 { to: "/", label: "Home" },
-                { to: "/registration", label: "Register Stakeholder" },
-                { to: "/stakeholders", label: "Stakeholders" }
+                { to: "/registration", label: "Register Stakeholder" }
             ];
         }
 
@@ -205,8 +204,7 @@ function App() {
             default:
                 return [
                     { to: "/", label: "Home" },
-                    { to: "/registration", label: "Register Stakeholder" },
-                    { to: "/stakeholders", label: "Stakeholders" }
+                    { to: "/registration", label: "Register Stakeholder" }
                 ];
         }
     };
