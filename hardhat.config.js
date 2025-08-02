@@ -16,29 +16,15 @@ module.exports = {
             chainId: 31337,
             allowUnlimitedContractSize: true,
         },
-        // Ethereum Sepolia Testnet
-        sepolia: {
-            url: process.env.SEPOLIA_RPC_URL || "https://sepolia.infura.io/v3/YOUR_INFURA_PROJECT_ID",
-            accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
-            chainId: 11155111,
-            blockConfirmations: 6,
-            gasPrice: 20000000000, // 20 gwei
-        },
         // Polygon Amoy Testnet
-        polygonAmoy: {
-            url: process.env.POLYGON_RPC_URL || "https://rpc-amoy.polygon.technology/",
+        polygon: {
+            url:
+                process.env.POLYGON_RPC_URL ||
+                "https://rpc-amoy.polygon.technology/",
             accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
             chainId: 80002,
             blockConfirmations: 6,
             gasPrice: 30000000000, // 30 gwei
-        },
-        // Polygon Mainnet
-        polygon: {
-            url: process.env.POLYGON_MAINNET_RPC_URL || process.env.POLYGON_RPC_URL || "https://polygon-rpc.com/",
-            accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
-            chainId: 137,
-            blockConfirmations: 6,
-            gasPrice: 50000000000, // 50 gwei (adjust based on network conditions)
         },
     },
     solidity: {
@@ -71,25 +57,20 @@ module.exports = {
     },
     etherscan: {
         // Use the new v2 API format with a single API key
-        apiKey: process.env.ETHERSCAN_API_KEY || process.env.POLYGONSCAN_API_KEY || "",
+        apiKey:
+            process.env.ETHERSCAN_API_KEY ||
+            process.env.POLYGONSCAN_API_KEY ||
+            "",
         customChains: [
             {
-                network: "polygonAmoy",
+                network: "polygon",
                 chainId: 80002,
                 urls: {
                     apiURL: "https://api-amoy.polygonscan.com/api",
-                    browserURL: "https://amoy.polygonscan.com/"
-                }
+                    browserURL: "https://amoy.polygonscan.com/",
+                },
             },
-            {
-                network: "sepolia",
-                chainId: 11155111,
-                urls: {
-                    apiURL: "https://api-sepolia.etherscan.io/api",
-                    browserURL: "https://sepolia.etherscan.io/"
-                }
-            }
-        ]
+        ],
     },
     namedAccounts: {
         deployer: {

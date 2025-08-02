@@ -11,7 +11,7 @@ module.exports = async ({ getNamedAccounts, deployments }) => {
 
     if (
         developmentChains.includes(network.name) ||
-        network.name === "polygonAmoy"
+        network.name === "polygon"
     ) {
         log("Deploying Mocks...")
 
