@@ -24,9 +24,9 @@
     "test:s3": "npx hardhat test src/test/FileStorageS3Integration.test.js",
     "test:s3-verbose": "npx hardhat test src/test/FileStorageS3Integration.test.js --verbose",
     "compile": "npx hardhat compile",
-    "deploy:local": "npx hardhat run deploy/03-clean-deploy.js --network localhost",
-    "deploy:polygon": "npx hardhat run deploy/03-clean-deploy.js --network polygon",
-    "deploy:polygon-testnet": "npx hardhat run deploy/03-clean-deploy.js --network polygonAmoy",
+    "deploy:local": "npx hardhat run deploy/01-deploy.js --network localhost",
+    "deploy:polygon": "npx hardhat run deploy/01-deploy.js --network polygon",
+    "deploy:polygon-testnet": "npx hardhat run deploy/01-deploy.js --network polygonAmoy",
     "deploy:test": "npx hardhat run scripts/deploy-test.js --network localhost"
   },
   "devDependencies": {
