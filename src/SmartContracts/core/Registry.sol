@@ -3,6 +3,9 @@ pragma solidity ^0.8.19;
 
 import "../access/AccessControl.sol";
 import "./ProductBatch.sol";
+import "../verification/ProvenanceTracker.sol";
+import "../verification/QRCodeVerifier.sol";
+import "../verification/PublicVerification.sol";
 
 contract Registry is AccessControl {
 
@@ -55,6 +58,40 @@ contract Registry is AccessControl {
         mapping(string => uint256) categoryLocalValues;
     }
 
+    // Product summary for display lists
+    struct ProductSummary {
+        uint256 id;
+        string name;
+        string category;
+        uint256 price;
+        uint256 usdPrice;
+        uint256 quantity;
+        string origin;
+        address farmer;
+        bool isAvailable;
+        ProductBatch.TradingMode tradingMode;
+    }
+
+    // Detailed product information
+    struct ProductDetails {
+        uint256 id;
+        string name;
+        string category;
+        uint256 quantity;
+        uint256 localPrice;
+        uint256 usdPrice;
+        string originLocation;
+        address farmer;
+        address productContract;
+        uint256 batchId;
+        uint256 createdAt;
+        bool isAvailable;
+        ProductBatch.TradingMode tradingMode;
+        bool weatherDependent;
+        uint256 transactionCount;
+        uint256 averageRating;
+    }
+
     // Core mappings
     mapping(uint256 => ProductRecord) public products;
     mapping(uint256 => TransactionRecord) public transactions;
@@ -79,6 +116,11 @@ contract Registry is AccessControl {
     uint256 public nextTransactionId = 1;
     MarketMetrics public marketMetrics;
     WeatherAnalytics public globalWeatherAnalytics;
+
+    // Contract references for verification
+    ProvenanceTracker public provenanceTracker;
+    QRCodeVerifier public qrVerifier;
+    PublicVerification public publicVerification;
 
     // Events
     event ProductRegistered(uint256 indexed productId, address indexed farmer, string name, string category, bool weatherDependent);
@@ -348,7 +390,7 @@ contract Registry is AccessControl {
         uint256 price,
         uint256 quantity,
         string calldata transactionType
-    ) external onlyActiveStakeholder returns (uint256) {
+    ) public onlyActiveStakeholder returns (uint256) {
         // Use the enhanced version with defaults for compatibility
         return recordTransactionWithOracle(
             batchId,
@@ -607,5 +649,127 @@ contract Registry is AccessControl {
             marketMetrics.totalUSDValue,
             marketMetrics.availableProducts  // ADD THIS 5th VALUE
         );
+    }
+
+   /**
+    * @dev Get products by stakeholder role (CORRECTED VERSION)
+    */
+    function getProductsByRole(Role role) external view returns (uint256[] memory) {
+        uint256[] memory temp = new uint256[](nextProductId); // Use nextProductId instead of productCount
+        uint256 count = 0;
+
+        for (uint256 i = 1; i < nextProductId; i++) { // Use nextProductId
+            ProductRecord storage product = products[i]; // Use ProductRecord instead of ProductInfo
+            if (product.isAvailable && hasRole(product.farmer, role)) { // Use farmer instead of owner
+                temp[count] = i;
+                count++;
+            }
+        }
+
+        uint256[] memory result = new uint256[](count);
+        for (uint256 i = 0; i < count; i++) {
+            result[i] = temp[i];
+        }
+
+        return result;
+    }
+
+    /**
+    * @dev Get product summaries by role for display lists
+    */
+    function getProductSummariesByRole(Role role) external view returns (ProductSummary[] memory) {
+        uint256[] memory productIds = this.getProductsByRole(role);
+        ProductSummary[] memory summaries = new ProductSummary[](productIds.length);
+
+        for (uint256 i = 0; i < productIds.length; i++) {
+            ProductRecord storage product = products[productIds[i]];
+            summaries[i] = ProductSummary({
+                id: productIds[i],
+                name: product.name,
+                category: product.category,
+                price: product.localPrice,
+                usdPrice: product.usdPrice,
+                quantity: product.quantity,
+                origin: product.originLocation,
+                farmer: product.farmer,
+                isAvailable: product.isAvailable,
+                tradingMode: product.tradingMode
+            });
+        }
+
+        return summaries;
+    }
+
+    /**
+    * @dev Get detailed product information
+    */
+    function getProductDetails(uint256 productId) external view returns (ProductDetails memory) {
+        require(productId > 0 && productId < nextProductId, "Invalid product ID");
+
+        ProductRecord storage product = products[productId];
+
+        // Calculate transaction count for this product
+        uint256 txCount = batchTransactions[product.batchId].length;
+
+        // Calculate average rating (placeholder - you'd implement actual rating system)
+        uint256 avgRating = 85; // Placeholder: 85% satisfaction
+
+        return ProductDetails({
+            id: productId,
+            name: product.name,
+            category: product.category,
+            quantity: product.quantity,
+            localPrice: product.localPrice,
+            usdPrice: product.usdPrice,
+            originLocation: product.originLocation,
+            farmer: product.farmer,
+            productContract: product.productContract,
+            batchId: product.batchId,
+            createdAt: product.createdAt,
+            isAvailable: product.isAvailable,
+            tradingMode: product.tradingMode,
+            weatherDependent: product.weatherDependent,
+            transactionCount: txCount,
+            averageRating: avgRating
+        });
+    }
+
+    /**
+    * @dev Set verification contract addresses
+    */
+    function setVerificationContracts(
+        address _provenanceTracker,
+        address _qrVerifier,
+        address _publicVerification
+    ) external onlyAdmin {
+        provenanceTracker = ProvenanceTracker(_provenanceTracker);
+        qrVerifier = QRCodeVerifier(_qrVerifier);
+        publicVerification = PublicVerification(_publicVerification);
+    }
+
+    /**
+    * @dev Record transaction with automatic provenance tracking
+    */
+    function recordTransactionWithProvenance(
+        uint256 batchId,
+        address seller,
+        address buyer,
+        uint256 localPrice,
+        uint256 quantity,
+        string calldata transactionType,
+        string calldata location
+    ) external onlyActiveStakeholder {
+        // Record normal transaction
+        recordTransaction(batchId, seller, buyer, localPrice, quantity, transactionType);
+
+        // Add provenance record if tracker is available
+        if (address(provenanceTracker) != address(0)) {
+            provenanceTracker.addProvenanceRecord(
+                batchId,
+                string(abi.encodePacked("Transaction: ", transactionType)),
+                location,
+                ""
+            );
+        }
     }
 }
