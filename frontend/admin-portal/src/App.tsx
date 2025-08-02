@@ -3,6 +3,11 @@ import { BrowserRouter as Router, Routes, Route, Link } from "react-router-dom"
 import { ethers } from "ethers"
 import "./App.css"
 import "./styles/pages.css"
+import "./styles/stakeholders.css";
+import "./styles/farmer.css";
+import "./styles/shipper.css";
+import "./styles/processor.css";
+import "./styles/distributor.css";
 
 // Import components and pages
 import { Home } from "./pages"
@@ -11,6 +16,7 @@ import StakeholderRegistration from "./pages/StakeholderRegistration"
 import Farmer from "./pages/Farmer"
 import Shipper from "./pages/Shipper"
 import Processor from "./pages/Processor"
+import Distributor from "./pages/Distributor";
 import AccountSwitcher from "./components/AccountSwitcher"
 
 // Network configuration
@@ -27,10 +33,24 @@ const getCurrentNetworkConfig = () => {
     return NETWORK_CONFIGS.hardhat // Default to Hardhat local network
 }
 
+// Contract addresses for role checking
+const CONTRACT_ADDRESSES = {
+    accessControl: process.env.REACT_APP_ACCESS_CONTROL_ADDRESS || "0x5FC8d32690cc91D4c39d9d3abcBD16989F875707"
+};
+
+const accessControlABI = [
+    "function hasRole(address, uint8) external view returns (bool)",
+    "function getRole(address) external view returns (uint8)",
+    "function isActive(address) external view returns (bool)",
+    "function isFullyActive(address) external view returns (bool)"
+];
+
 function App() {
     const [isConnected, setIsConnected] = useState(false)
     const [account, setAccount] = useState<string>("")
     const [chainId, setChainId] = useState<number>(0)
+    const [userRole, setUserRole] = useState<number>(0)
+    const [isUserActive, setIsUserActive] = useState<boolean>(false)
 
     // Check if wallet is connected on load
     useEffect(() => {
@@ -51,6 +71,9 @@ function App() {
                         )
                         const network = await provider.getNetwork()
                         setChainId(Number(network.chainId))
+                        
+                        // Check user role
+                        await checkUserRole(accounts[0])
                     }
                 } catch (error) {
                     console.error("Error checking connection:", error)
@@ -62,13 +85,16 @@ function App() {
 
         // Listen for account changes
         if (window.ethereum) {
-            window.ethereum.on("accountsChanged", (accounts: string[]) => {
+            window.ethereum.on("accountsChanged", async (accounts: string[]) => {
                 if (accounts.length > 0) {
                     setAccount(accounts[0])
                     setIsConnected(true)
+                    await checkUserRole(accounts[0])
                 } else {
                     setAccount("")
                     setIsConnected(false)
+                    setUserRole(0)
+                    setIsUserActive(false)
                 }
             })
 
@@ -87,7 +113,105 @@ function App() {
         }
     }, [])
 
-    // Connect wallet function is now handled by the AccountSwitcher component
+    const checkUserRole = async (userAccount: string) => {
+        if (!userAccount) return;
+        
+        try {
+            const provider = new ethers.BrowserProvider(window.ethereum);
+            const signer = await provider.getSigner();
+            const contract = new ethers.Contract(
+                CONTRACT_ADDRESSES.accessControl,
+                accessControlABI,
+                signer
+            );
+            
+            const role = await contract.getRole(userAccount);
+            const isActive = await contract.isFullyActive(userAccount);
+            
+            setUserRole(Number(role));
+            setIsUserActive(isActive);
+            
+        } catch (error) {
+            console.error("Error checking user role:", error);
+            setUserRole(0);
+            setIsUserActive(false);
+        }
+    };
+
+    // Get role name for display
+    const getRoleName = (role: number): string => {
+        const roles = {
+            0: "NONE",
+            1: "FARMER",
+            2: "PROCESSOR", 
+            3: "DISTRIBUTOR",
+            4: "SHIPPER",
+            5: "RETAILER",
+            6: "ADMIN"
+        };
+        return roles[role as keyof typeof roles] || "UNKNOWN";
+    };
+
+    // Get navigation links based on role
+    const getNavigationLinks = () => {
+        if (!isConnected) {
+            return [
+                { to: "/", label: "Home" },
+                { to: "/registration", label: "Register Stakeholder" }
+            ];
+        }
+
+        if (!isUserActive) {
+            return [
+                { to: "/", label: "Home" },
+                { to: "/registration", label: "Register Stakeholder" },
+                { to: "/stakeholders", label: "Stakeholders" }
+            ];
+        }
+
+        const role = getRoleName(userRole);
+        
+        switch (role) {
+            case "ADMIN":
+                return [
+                    { to: "/", label: "Home" },
+                    { to: "/stakeholders", label: "Stakeholder Management" }
+                ];
+            case "FARMER":
+                return [
+                    { to: "/", label: "Home" },
+                    { to: "/farmer", label: "Farmer Dashboard" }
+                ];
+            case "PROCESSOR":
+                return [
+                    { to: "/", label: "Home" },
+                    { to: "/processor", label: "Processor Dashboard" }
+                ];
+            case "DISTRIBUTOR":
+                return [
+                    { to: "/", label: "Home" },
+                    { to: "/distributor", label: "Distributor Dashboard" }
+                ];
+            case "SHIPPER":
+                return [
+                    { to: "/", label: "Home" },
+                    { to: "/shipper", label: "Shipper Dashboard" }
+                ];
+            case "RETAILER":
+                return [
+                    { to: "/", label: "Home" },
+                    { to: "/retailer", label: "Retailer Dashboard" }
+                ];
+            default:
+                return [
+                    { to: "/", label: "Home" },
+                    { to: "/registration", label: "Register Stakeholder" },
+                    { to: "/stakeholders", label: "Stakeholders" }
+                ];
+        }
+    };
+
+    const navigationLinks = getNavigationLinks();
 
     return (
         <Router>
@@ -98,6 +222,11 @@ function App() {
                         <span className="network-badge">
                             ChainID: {chainId || "Not Connected"}
                         </span>
+                        {isConnected && isUserActive && (
+                            <span className="role-badge">
+                                {getRoleName(userRole)}
+                            </span>
+                        )}
                     </div>
                 </header>
 
@@ -105,36 +234,27 @@ function App() {
                     <div className="account-switcher-container">
                         <AccountSwitcher />
                     </div>
-                    <nav className="nav-links">
-                        <ul>
-                            <li>
-                                <Link to="/">Home</Link>
-                            </li>
-                            <li>
-                                <Link to="/stakeholders">Stakeholder Management</Link>
-                            </li>
-                            <li>
-                                <Link to="/register">Register as Stakeholder</Link>
-                            </li>
-                            <li>
-                                <Link to="/farmer">Farmer Dashboard</Link>
-                            </li>
-                            <li>
-                                <Link to="/shipper">Shipper Dashboard</Link>
-                            </li>
-                            <li>
-                                <Link to="/processor">Processor Dashboard</Link>
-                            </li>
-                        </ul>
+                    
+                    <nav className="nav-menu">
+                        {navigationLinks.map((link, index) => (
+                            <Link 
+                                key={index} 
+                                to={link.to} 
+                                className="nav-link"
+                            >
+                                {link.label}
+                            </Link>
+                        ))}
                     </nav>
 
                     <Routes>
                         <Route path="/" element={<Home />} />
                         <Route path="/stakeholders" element={<Stakeholders />} />
-                        <Route path="/register" element={<StakeholderRegistration />} />
+                        <Route path="/registration" element={<StakeholderRegistration />} />
                         <Route path="/farmer" element={<Farmer />} />
                         <Route path="/shipper" element={<Shipper />} />
                         <Route path="/processor" element={<Processor />} />
+                        <Route path="/distributor" element={<Distributor />} />
                     </Routes>
                 </main>
 
