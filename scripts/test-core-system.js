@@ -466,6 +466,11 @@ async function main() {
         await shipmentTracker.connect(retailer1).confirmDelivery(3);
         console.log("✅ Retailer confirmed final delivery");
 
+        await productBatch.connect(retailer1).listForSale(
+            1, // batchId
+            ethers.parseEther("0.035"), // markup for retail
+            TRADING_MODE.SPOT_MARKET
+        );
         // Final product ready for consumers
         console.log("\n🎉 Product journey complete! Ready for consumers at retail store");
 
@@ -528,6 +533,70 @@ async function main() {
         console.log("   ✅ Processing to Distribution: Tracked via shipment 2");
         console.log("   ✅ Distribution to Retail: Tracked via shipment 3");
         console.log("   ✅ Complete chain of custody maintained");
+
+        // Get some consumer accounts (using remaining signers)
+        const [, , , , , , , , consumer1, consumer2] = await ethers.getSigners();
+
+        // Retailer has the juice, let's make it available for consumers
+        console.log("🏪 Retailer1 makes juice available for consumer purchase...");
+
+        // First, check current batch status
+        const batchInfo = await productBatch.getBatchInfo(1);
+        console.log(`   Current owner: ${batchInfo[1]}`);
+        console.log(`   Current quantity: ${batchInfo[8]}`);
+        console.log(`   Is available for sale: ${batchInfo[9]}`);
+
+        // Consumer1 purchases juice with immediate ownership
+        console.log("\n🛒 Consumer1 purchases juice with immediate ownership transfer...");
+
+        const consumer1PurchaseTx = await productBatch.connect(consumer1).purchaseWithImmediateOwnership(
+            1, // batchId (the processed mango juice)
+            retailer1.address, // retailer
+            20, // quantity (buying 20 units out of 80)
+            "123 Consumer Street, Home Address", // delivery address
+            { value: ethers.parseEther("0.7") } // 20 units * 0.035 ETH each = 0.7 ETH
+        );
+        await consumer1PurchaseTx.wait();
+        console.log("✅ Consumer1 purchase completed with immediate ownership!");
+
+        // Get purchase details
+        const consumer1Purchase = await productBatch.getConsumerPurchase(1);
+        console.log(`   Purchase ID: 1`);
+        console.log(`   Consumer: ${consumer1Purchase[1]}`);
+        console.log(`   Retailer: ${consumer1Purchase[2]}`);
+        console.log(`   Price Paid: ${ethers.formatEther(consumer1Purchase[3])} ETH`);
+        console.log(`   Quantity: ${consumer1Purchase[4]} units`);
+        console.log(`   Pickup Location: ${consumer1Purchase[8]}`);
+        console.log(`   Is Picked Up: ${consumer1Purchase[6]}`);
+        console.log(`   Ownership Claimed: ${consumer1Purchase[7]}`);
+
+        // Show consumer purchase history
+        console.log("\n📋 Consumer Purchase Histories:");
+
+        const consumer1History = await productBatch.getConsumerHistory(consumer1.address);
+        console.log(`   Consumer1 purchases: [${consumer1History.join(", ")}]`);
+
+        // Record consumer1 transaction
+        await registry.connect(retailer1).recordTransaction(
+          1, // batchId
+          retailer1.address, // seller
+          consumer1.address, // buyer
+          ethers.parseEther("0.035"), // unit price
+          20, // quantity
+          "CONSUMER_PURCHASE"
+        );
+
+        console.log("✅ Consumer transactions recorded in registry");
+
+        // Show complete supply chain journey
+        console.log("\n🔗 COMPLETE SUPPLY CHAIN JOURNEY:");
+        console.log("   🌱 Farmer1 (Costa Rica) → Created 100 mango units");
+        console.log("   🏭 Processor1 → Processed to 80 juice units");
+        console.log("   🚚 Distributor1 → Distributed 80 units");
+        console.log("   🏪 Retailer1 → Stocked 80 units for sale");
+        console.log("   🛒 Consumer1 → Bought 20 units (immediate ownership)");
+        console.log("   📦 Remaining → 60 units still available at retailer");
+
     } catch (err) {
         console.error("❌ Error:", err);
         console.error("Stack trace:", err.stack);

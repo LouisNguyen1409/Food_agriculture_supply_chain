@@ -76,6 +76,29 @@ contract ProductBatch is AccessControl {
         uint256 checkedAt;
     }
 
+    struct ConsumerPurchase {
+        uint256 batchId;
+        address consumer;
+        address retailer;
+        uint256 purchasePrice;
+        uint256 quantity;
+        uint256 purchaseTime;
+        bool isPickedUp;
+        bool ownershipClaimed;
+        string pickupLocation;   // Retailer location
+    }
+
+    // Add to state variables section
+    mapping(uint256 => ConsumerPurchase) public consumerPurchases;
+    mapping(address => uint256[]) public consumerPurchaseHistory;
+    uint256 public nextPurchaseId = 1;
+
+    // Add events
+    event ConsumerPurchaseCreated(uint256 indexed purchaseId, uint256 indexed batchId, address indexed consumer, address retailer);
+    event ProductPickedUp(uint256 indexed purchaseId, address indexed consumer);
+    event OwnershipClaimed(uint256 indexed purchaseId, uint256 indexed batchId, address indexed consumer);
+
+
     // State variables
     mapping(uint256 => Batch) public batches;
     mapping(uint256 => ProcessingData) public processingData;
@@ -570,5 +593,224 @@ contract ProductBatch is AccessControl {
         batchesByStatus[BatchStatus.SOLD].push(batchId);
 
         emit BatchUpdated(batchId, "Sold");
+    }
+
+    // Replace all the consumer functions with these:
+    /**
+    * @dev Consumer purchases product from retailer - Direct ownership transfer
+    */
+    function purchaseFromRetailer(
+        uint256 batchId,
+        address retailer,
+        uint256 quantity,
+        string calldata pickupLocation
+    ) external payable returns (uint256) {
+        require(_batchExists(batchId), "Batch does not exist");
+        Batch storage batch = batches[batchId];
+        require(batch.isAvailableForSale, "Product not for sale");
+        require(batch.currentOwner == retailer, "Retailer doesn't own this batch");
+        require(hasRole(retailer, Role.RETAILER), "Invalid retailer");
+        require(quantity <= batch.quantity, "Insufficient quantity");
+
+        // Calculate purchase price
+        uint256 totalPrice = (batch.basePrice * quantity) / batch.quantity;
+        require(msg.value >= totalPrice, "Insufficient payment");
+
+        uint256 purchaseId = nextPurchaseId++;
+
+        // Create purchase record (no pickup code)
+        consumerPurchases[purchaseId] = ConsumerPurchase({
+            batchId: batchId,
+            consumer: msg.sender,
+            retailer: retailer,
+            purchasePrice: totalPrice,
+            quantity: quantity,
+            purchaseTime: block.timestamp,
+            isPickedUp: false,
+            ownershipClaimed: false,
+            pickupLocation: pickupLocation
+        });
+
+        // Update mappings
+        consumerPurchaseHistory[msg.sender].push(purchaseId);
+
+        // Update batch quantity
+        batch.quantity -= quantity;
+        if (batch.quantity == 0) {
+            batch.isAvailableForSale = false;
+            batch.status = BatchStatus.SOLD;
+        }
+
+        // Transfer payment to retailer
+        payable(retailer).transfer(totalPrice);
+
+        // Return excess payment
+        if (msg.value > totalPrice) {
+            payable(msg.sender).transfer(msg.value - totalPrice);
+        }
+
+        emit ConsumerPurchaseCreated(purchaseId, batchId, msg.sender, retailer);
+        return purchaseId;
+    }
+
+    /**
+    * @dev Consumer confirms pickup using purchase ID
+    */
+    function confirmPickup(uint256 purchaseId) external returns (bool) {
+        require(purchaseId < nextPurchaseId, "Invalid purchase ID");
+        ConsumerPurchase storage purchase = consumerPurchases[purchaseId];
+        require(purchase.consumer == msg.sender, "Not your purchase");
+        require(!purchase.isPickedUp, "Already picked up");
+
+        // Mark as picked up
+        purchase.isPickedUp = true;
+
+        emit ProductPickedUp(purchaseId, msg.sender);
+        return true;
+    }
+
+    /**
+    * @dev Consumer claims ownership after pickup
+    */
+    function claimOwnership(uint256 purchaseId) external returns (bool) {
+        require(purchaseId < nextPurchaseId, "Invalid purchase ID");
+        ConsumerPurchase storage purchase = consumerPurchases[purchaseId];
+        require(purchase.consumer == msg.sender, "Not your purchase");
+        require(purchase.isPickedUp, "Product not picked up yet");
+        require(!purchase.ownershipClaimed, "Ownership already claimed");
+
+        // Mark ownership as claimed
+        purchase.ownershipClaimed = true;
+
+        // Update batch ownership
+        Batch storage batch = batches[purchase.batchId];
+        batch.currentOwner = msg.sender;
+        batch.lastUpdated = block.timestamp;
+
+        emit OwnershipClaimed(purchaseId, purchase.batchId, msg.sender);
+        return true;
+    }
+
+    /**
+    * @dev Alternative: Direct purchase with immediate ownership transfer
+    */
+    function purchaseWithImmediateOwnership(
+        uint256 batchId,
+        address retailer,
+        uint256 quantity,
+        string calldata deliveryAddress
+    ) external payable returns (uint256) {
+        require(_batchExists(batchId), "Batch does not exist");
+        Batch storage batch = batches[batchId];
+        require(batch.isAvailableForSale, "Product not for sale");
+        require(batch.currentOwner == retailer, "Retailer doesn't own this batch");
+        require(hasRole(retailer, Role.RETAILER), "Invalid retailer");
+        require(quantity <= batch.quantity, "Insufficient quantity");
+
+        // Calculate purchase price
+        uint256 totalPrice = (batch.basePrice * quantity) / batch.quantity;
+        require(msg.value >= totalPrice, "Insufficient payment");
+
+        uint256 purchaseId = nextPurchaseId++;
+
+        // Create purchase record with immediate ownership
+        consumerPurchases[purchaseId] = ConsumerPurchase({
+            batchId: batchId,
+            consumer: msg.sender,
+            retailer: retailer,
+            purchasePrice: totalPrice,
+            quantity: quantity,
+            purchaseTime: block.timestamp,
+            isPickedUp: true,        // Automatically marked as picked up
+            ownershipClaimed: true,  // Automatically claimed ownership
+            pickupLocation: deliveryAddress
+        });
+
+        // Update mappings
+        consumerPurchaseHistory[msg.sender].push(purchaseId);
+
+        // Update batch
+        batch.quantity -= quantity;
+        batch.currentOwner = msg.sender; // Transfer ownership immediately
+        if (batch.quantity == 0) {
+            batch.isAvailableForSale = false;
+            batch.status = BatchStatus.SOLD;
+        }
+        batch.lastUpdated = block.timestamp;
+
+        // Transfer payment to retailer
+        payable(retailer).transfer(totalPrice);
+
+        // Return excess payment
+        if (msg.value > totalPrice) {
+            payable(msg.sender).transfer(msg.value - totalPrice);
+        }
+
+        emit ConsumerPurchaseCreated(purchaseId, batchId, msg.sender, retailer);
+        emit ProductPickedUp(purchaseId, msg.sender);
+        emit OwnershipClaimed(purchaseId, batchId, msg.sender);
+
+        return purchaseId;
+    }
+
+    /**
+    * @dev Get consumer purchase details (updated without pickup code)
+    */
+    function getConsumerPurchase(uint256 purchaseId) external view returns (
+        uint256 batchId,
+        address consumer,
+        address retailer,
+        uint256 purchasePrice,
+        uint256 quantity,
+        uint256 purchaseTime,
+        bool isPickedUp,
+        bool ownershipClaimed,
+        string memory pickupLocation
+    ) {
+        require(purchaseId < nextPurchaseId, "Invalid purchase ID");
+        ConsumerPurchase storage purchase = consumerPurchases[purchaseId];
+
+        return (
+            purchase.batchId,
+            purchase.consumer,
+            purchase.retailer,
+            purchase.purchasePrice,
+            purchase.quantity,
+            purchase.purchaseTime,
+            purchase.isPickedUp,
+            purchase.ownershipClaimed,
+            purchase.pickupLocation
+        );
+    }
+
+    /**
+    * @dev Get consumer's purchase history
+    */
+    function getConsumerHistory(address consumer) external view returns (uint256[] memory) {
+        return consumerPurchaseHistory[consumer];
+    }
+
+    /**
+    * @dev Get purchases pending pickup for a retailer
+    */
+    function getRetailerPendingPickups(address retailer) external view returns (uint256[] memory) {
+        uint256[] memory allPurchases = new uint256[](nextPurchaseId - 1);
+        uint256 count = 0;
+
+        for (uint256 i = 1; i < nextPurchaseId; i++) {
+            ConsumerPurchase storage purchase = consumerPurchases[i];
+            if (purchase.retailer == retailer && !purchase.isPickedUp) {
+                allPurchases[count] = i;
+                count++;
+            }
+        }
+
+        // Resize array to actual count
+        uint256[] memory pendingPickups = new uint256[](count);
+        for (uint256 i = 0; i < count; i++) {
+            pendingPickups[i] = allPurchases[i];
+        }
+
+        return pendingPickups;
     }
 }
