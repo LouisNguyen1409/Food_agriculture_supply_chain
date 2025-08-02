@@ -4,7 +4,7 @@ pragma solidity ^0.8.7;
 import "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
 
 library Weather {
-    // Get temperature in Celsius (multiplied by 100 to avoid decimals)
+    // Get temperature in Celsius (scaled if feed is scaled)
     function getTemperature(
         AggregatorV3Interface temperatureFeed
     ) internal view returns (int256) {
@@ -12,7 +12,7 @@ library Weather {
         return temperature;
     }
 
-    // Get humidity as percentage (multiplied by 100)
+    // Get humidity as percentage
     function getHumidity(
         AggregatorV3Interface humidityFeed
     ) internal view returns (uint256) {
@@ -21,7 +21,7 @@ library Weather {
         return uint256(humidity);
     }
 
-    // Get rainfall in mm (multiplied by 100 to avoid decimals)
+    // Get rainfall in mm
     function getRainfall(
         AggregatorV3Interface rainfallFeed
     ) internal view returns (uint256) {
@@ -30,7 +30,7 @@ library Weather {
         return uint256(rainfall);
     }
 
-    // Get wind speed in km/h (multiplied by 100 to avoid decimals)
+    // Get wind speed in km/h
     function getWindSpeed(
         AggregatorV3Interface windSpeedFeed
     ) internal view returns (uint256) {
@@ -39,27 +39,6 @@ library Weather {
         return uint256(windSpeed);
     }
 
-    // Check if temperature is within acceptable range for farming
-    function isTemperatureOptimal(
-        AggregatorV3Interface temperatureFeed,
-        int256 minTemp,
-        int256 maxTemp
-    ) internal view returns (bool) {
-        int256 currentTemp = getTemperature(temperatureFeed);
-        return currentTemp >= minTemp && currentTemp <= maxTemp;
-    }
-
-    // Check if humidity is within acceptable range
-    function isHumidityOptimal(
-        AggregatorV3Interface humidityFeed,
-        uint256 minHumidity,
-        uint256 maxHumidity
-    ) internal view returns (bool) {
-        uint256 currentHumidity = getHumidity(humidityFeed);
-        return currentHumidity >= minHumidity && currentHumidity <= maxHumidity;
-    }
-
-    // Get comprehensive weather data in a single call
     struct WeatherData {
         int256 temperature;
         uint256 humidity;
@@ -84,11 +63,32 @@ library Weather {
             });
     }
 
-    // Check if weather conditions are suitable for farming operations
+    // Check if temperature is within range
+    function isTemperatureOptimal(
+        AggregatorV3Interface temperatureFeed,
+        int256 minTemp,
+        int256 maxTemp
+    ) internal view returns (bool) {
+        int256 currentTemp = getTemperature(temperatureFeed);
+        return currentTemp >= minTemp && currentTemp <= maxTemp;
+    }
+
+    // Check humidity range
+    function isHumidityOptimal(
+        AggregatorV3Interface humidityFeed,
+        uint256 minHumidity,
+        uint256 maxHumidity
+    ) internal view returns (bool) {
+        uint256 currentHumidity = getHumidity(humidityFeed);
+        return currentHumidity >= minHumidity && currentHumidity <= maxHumidity;
+    }
+
+    // Combined suitability (requires all four feeds)
     function isFarmingConditionsSuitable(
         AggregatorV3Interface temperatureFeed,
         AggregatorV3Interface humidityFeed,
         AggregatorV3Interface rainfallFeed,
+        AggregatorV3Interface windSpeedFeed,
         int256 minTemp,
         int256 maxTemp,
         uint256 minHumidity,
@@ -99,7 +99,7 @@ library Weather {
             temperatureFeed,
             humidityFeed,
             rainfallFeed,
-            AggregatorV3Interface(address(0)) // windSpeed not needed for this check
+            windSpeedFeed
         );
 
         return (weather.temperature >= minTemp &&
