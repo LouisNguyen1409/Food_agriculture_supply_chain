@@ -157,8 +157,8 @@ const getRoleName = (roleId: number): string => {
         1: "Farmer",
         2: "Processor",
         3: "Distributor",
-        4: "Retailer",
-        5: "Consumer",
+        4: "Shipper",
+        5: "Retailer",
         6: "Admin"
     };
     return roleMap[roleId] || "Unknown";
