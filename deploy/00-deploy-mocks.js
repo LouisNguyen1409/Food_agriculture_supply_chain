@@ -9,7 +9,10 @@ module.exports = async ({ getNamedAccounts, deployments }) => {
     const { deploy, log } = deployments
     const { deployer } = await getNamedAccounts()
 
-    if (developmentChains.includes(network.name)) {
+    if (
+        developmentChains.includes(network.name) ||
+        network.name === "polygonAmoy"
+    ) {
         log("Deploying Mocks...")
 
         // Deploy ETH/USD Price Feed Mock

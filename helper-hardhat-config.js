@@ -11,11 +11,11 @@ const networkConfig = {
     80002: {
         name: "polygon",
         ethUsdPriceFeed: "0xF0d50568e3A7e8259E16663972b11910F89BD8e7",
-        // Note: These are placeholder addresses - replace with actual Chainlink weather oracle addresses
-        temperatureFeed: "0x0000000000000000000000000000000000000000", // TODO: Add real temperature feed
-        humidityFeed: "0x0000000000000000000000000000000000000000", // TODO: Add real humidity feed
-        rainfallFeed: "0x0000000000000000000000000000000000000000", // TODO: Add real rainfall feed
-        windSpeedFeed: "0x0000000000000000000000000000000000000000", // TODO: Add real wind speed feed
+        // LinkWell Nodes weather oracle addresses (replace with actual addresses from their response)
+        temperatureFeed: "REAL_TEMPERATURE_ORACLE_ADDRESS", // Replace with actual address
+        humidityFeed: "REAL_HUMIDITY_ORACLE_ADDRESS", // Replace with actual address
+        rainfallFeed: "REAL_RAINFALL_ORACLE_ADDRESS", // Replace with actual address
+        windSpeedFeed: "REAL_WIND_SPEED_ORACLE_ADDRESS", // Replace with actual address
     },
 }
 
