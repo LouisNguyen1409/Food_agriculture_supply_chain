@@ -3,7 +3,7 @@ const { ethers } = require("hardhat");
 async function main() {
     console.log("🌟 Testing Fixed Four-Contract System...\n");
 
-    const [deployer, farmer1, farmer2, processor1, distributor1, retailer1] = await ethers.getSigners();
+    const [deployer, farmer1, farmer2, processor1, distributor1, retailer1, shipper1, shipper2] = await ethers.getSigners();
 
     try {
         // Deploy core contracts
@@ -33,7 +33,7 @@ async function main() {
             await contract.activateAccount(address);
         };
 
-        const ROLE = { FARMER: 1, PROCESSOR: 2, DISTRIBUTOR: 3, RETAILER: 5 };
+        const ROLE = { FARMER: 1, PROCESSOR: 2, DISTRIBUTOR: 3, SHIPPER: 4, RETAILER: 5 };
         const TRADING_MODE = { SPOT_MARKET: 0, CONTRACT_FARMING: 1, COOPERATIVE: 2 };
 
         // Setup roles for all contracts
@@ -43,6 +43,8 @@ async function main() {
             await setupRole(contract, processor1.address, ROLE.PROCESSOR);
             await setupRole(contract, distributor1.address, ROLE.DISTRIBUTOR);
             await setupRole(contract, retailer1.address, ROLE.RETAILER);
+            await setupRole(contract, shipper1.address, ROLE.SHIPPER);
+            await setupRole(contract, shipper2.address, ROLE.SHIPPER);
         }
 
         console.log("✅ Roles assigned to all stakeholders\n");
@@ -198,42 +200,51 @@ async function main() {
         console.log("\n📦 SCENARIO 4: Shipment Tracking\n");
 
         // Create shipment
-        console.log("🚚 Creating shipment...");
+        console.log("🚚 Creating shipment with professional shipper...");
         const shipmentTx = await shipmentTracker.connect(farmer1).createShipment(
           1, // batchId
-          1, // offerId (assuming the offer ID is 1)
+          1, // offerId
           processor1.address, // receiver
-          farmer1.address, // shipper (or use address(0) for auto-assign)
-          "TRACK-MANGO-001", // trackingId
+          shipper1.address, // dedicated shipper
+          "SHIP-MANGO-001", // trackingId
           "Costa Rica Farm", // fromLocation
           "Processing Facility", // toLocation
           "QmShipmentMeta" // metadataHash
         );
+        await productBatch.connect(farmer1)["transferOwnership(uint256,address)"](1, shipper1.address);
+        console.log("✅ Ownership transferred from farmer to shipper");
+
         await shipmentTx.wait();
-        console.log("✅ Shipment created");
+        console.log("✅ Shipment created with professional shipper");
 
-        // Update shipment status
-        console.log("📍 Updating shipment status...");
+        // Shipper manages the entire shipping process
+        console.log("📍 Professional shipper manages delivery...");
 
-        // 1. Shipper picks up the shipment
-        await shipmentTracker.connect(farmer1).pickupShipment(1);
-        console.log("   📍 Shipment picked up");
+        // 1. Shipper picks up from farmer
+        await shipmentTracker.connect(shipper1).pickupShipment(1);
+        console.log("   📍 Shipper1 picked up from farmer");
 
-        // 2. Update location during transit
-        await shipmentTracker.connect(farmer1).updateLocation(1, "Highway 101 - In Transit");
-        console.log("   📍 Shipment in transit");
+        // 2. Shipper updates location during transit
+        await shipmentTracker.connect(shipper1).updateLocation(1, "Port - Loading for transport");
+        console.log("   📍 Shipper1: At port, loading cargo");
 
-        // 3. Mark as delivered
-        await shipmentTracker.connect(farmer1).markDelivered(1);
-        console.log("   📍 Shipment delivered");
+        await shipmentTracker.connect(shipper1).updateLocation(1, "Highway 101 - In Transit to Processing");
+        console.log("   📍 Shipper1: En route to processing facility");
 
-        // Transfer ownership
-        await productBatch.connect(farmer1)["transferOwnership(uint256,address)"](1, processor1.address);
-        console.log("✅ Ownership transferred");
+        await shipmentTracker.connect(shipper1).updateLocation(1, "Processing Facility - Arrived");
+        console.log("   📍 Shipper1: Arrived at destination");
 
-        // 4. Receiver confirms delivery
+        // 3. Shipper marks as delivered
+        await shipmentTracker.connect(shipper1).markDelivered(1);
+        console.log("   📍 Shipper1: Marked as delivered");
+
+        // 4. Ownership transfer (farmer to processor)
+        await productBatch.connect(shipper1)["transferOwnership(uint256,address)"](1, processor1.address);
+        console.log("✅ Ownership transferred from shipper to processor");
+
+        // 5. Processor confirms delivery
         await shipmentTracker.connect(processor1).confirmDelivery(1);
-        console.log("✅ Delivery confirmed");
+        console.log("✅ Processor confirmed delivery from shipper");
 
         // =============================================================
         // SCENARIO 5: ENHANCED ANALYTICS
@@ -363,23 +374,25 @@ async function main() {
             1, // batchId
             2, // offerId
             distributor1.address, // receiver
-            processor1.address, // shipper
+            shipper2.address, // shipper
             "TRACK-JUICE-002",
             "Processing Facility",
             "Distribution Center",
             "QmShipment2Meta"
         );
         await shipment2Tx.wait();
+        await productBatch.connect(processor1)["transferOwnership(uint256,address)"](1, shipper2.address);
+        console.log("✅ Ownership transferred");
 
         // Track shipment 2
-        await shipmentTracker.connect(processor1).pickupShipment(2);
+        await shipmentTracker.connect(shipper2).pickupShipment(2);
         console.log("   📍 Juice shipment picked up");
-        await shipmentTracker.connect(processor1).updateLocation(2, "Regional Highway");
+        await shipmentTracker.connect(shipper2).updateLocation(2, "Regional Highway");
         console.log("   📍 Juice shipment in transit");
-        await shipmentTracker.connect(processor1).markDelivered(2);
+        await shipmentTracker.connect(shipper2).markDelivered(2);
         console.log("   📍 Juice shipment delivered to distributor");
 
-        await productBatch.connect(processor1)["transferOwnership(uint256,address)"](1, distributor1.address);
+        await productBatch.connect(shipper2)["transferOwnership(uint256,address)"](1, distributor1.address);
         console.log("✅ Ownership transferred");
 
         await shipmentTracker.connect(distributor1).confirmDelivery(2);
@@ -429,23 +442,25 @@ async function main() {
             1, // batchId
             3, // offerId
             retailer1.address, // receiver
-            distributor1.address, // shipper
+            shipper1.address, // shipper
             "TRACK-JUICE-003",
             "Distribution Center",
             "Retail Store",
             "QmShipment3Meta"
         );
         await shipment3Tx.wait();
+        await productBatch.connect(distributor1)["transferOwnership(uint256,address)"](1, shipper1.address);
+        console.log("✅ Ownership transferred");
 
         // Track shipment 3
-        await shipmentTracker.connect(distributor1).pickupShipment(3);
+        await shipmentTracker.connect(shipper1).pickupShipment(3);
         console.log("   📍 Final shipment picked up");
-        await shipmentTracker.connect(distributor1).updateLocation(3, "City Streets");
+        await shipmentTracker.connect(shipper1).updateLocation(3, "City Streets");
         console.log("   📍 Final shipment in transit");
-        await shipmentTracker.connect(distributor1).markDelivered(3);
+        await shipmentTracker.connect(shipper1).markDelivered(3);
         console.log("   📍 Final shipment delivered to retailer");
 
-        await productBatch.connect(distributor1)["transferOwnership(uint256,address)"](1, retailer1.address);
+        await productBatch.connect(shipper1)["transferOwnership(uint256,address)"](1, retailer1.address);
         console.log("✅ Ownership transferred");
 
         await shipmentTracker.connect(retailer1).confirmDelivery(3);
