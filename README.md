@@ -1,19 +1,14 @@
 # Food_agriculture_supply_chain
 backend
-npx hardhat node --network hardhat
+```
+npx hardhat clean && npx hardhat node
 
-npx hardhat run deploy/03-clean-deploy.js --network localhost
+npm run deploy:local
+```
 
 frontend:
-script farmer: scripts: register-stakeholder.js
-npm start
-
-npx hardhat deploy --tags clean
-
-REMEMBER TO CHECK THE ADDRESS IN THE SCRIPTS AND CHANGE IT IF NEEDED
-node scripts/register-farmer.js 
-node scripts/register-distributor.js   
-node scripts/register-processor-update-product-state.js (CHANGE ADDRESS OF PRODUCT IN THE SCRIPTS) 
+```
+```
 
 # Deployed Contracts
 
