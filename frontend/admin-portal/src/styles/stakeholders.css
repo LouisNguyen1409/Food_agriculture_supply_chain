@@ -1,0 +1,264 @@
+/* Stakeholder Management Page Styles */
+
+/* Modal Styles */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  background-color: white;
+  padding: 2rem;
+  border-radius: 8px;
+  width: 90%;
+  max-width: 500px;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+}
+
+.modal-content h3 {
+  margin-top: 0;
+  margin-bottom: 1rem;
+  color: #333;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.cancel-button {
+  background-color: #f1f1f1;
+  color: #333;
+  border: none;
+  padding: 0.6rem 1.2rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.confirm-button {
+  background-color: #3498db;
+  color: white;
+  border: none;
+  padding: 0.6rem 1.2rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.confirm-button:hover {
+  background-color: #2980b9;
+}
+
+/* Loading Spinner Styles */
+.loading-spinner-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(255, 255, 255, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 900;
+}
+
+.loading-spinner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.spinner {
+  border: 4px solid rgba(0, 0, 0, 0.1);
+  border-left-color: #3498db;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Message container */
+.message-container {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 800;
+  max-width: 400px;
+  width: calc(100% - 40px);
+}
+
+.error-message, .success-message {
+  padding: 1rem;
+  border-radius: 4px;
+  margin-bottom: 1rem;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  animation: fadeIn 0.3s ease-out;
+}
+
+.error-message {
+  background-color: #f8d7da;
+  color: #721c24;
+  border: 1px solid #f5c6cb;
+}
+
+.success-message {
+  background-color: #d4edda;
+  color: #155724;
+  border: 1px solid #c3e6cb;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Responsive styles for stakeholders page */
+.stakeholders-page .tabs {
+  display: flex;
+  flex-wrap: wrap;
+  margin-bottom: 1.5rem;
+  gap: 0.5rem;
+}
+
+.stakeholders-page .tab-button {
+  flex: 1 1 auto;
+  min-width: 120px;
+}
+
+.stakeholders-page .stakeholder-table {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.stakeholders-page .request-details, 
+.stakeholders-page .license-key-section,
+.stakeholders-page .registration-form {
+  background-color: #f9f9f9;
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin-top: 1.5rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.stakeholders-page .filter-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.stakeholders-page .stats-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 1.5rem;
+  margin-top: 1.5rem;
+}
+
+.stakeholders-page .stat-card {
+  background-color: white;
+  border-radius: 8px;
+  padding: 1.5rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.stakeholders-page .stat-card h3 {
+  margin-top: 0;
+  color: #333;
+  font-size: 1.1rem;
+}
+
+.stakeholders-page .stat-card .stat-value {
+  font-size: 2rem;
+  font-weight: bold;
+  color: #3498db;
+  margin: 0.5rem 0;
+}
+
+/* Form styles */
+.stakeholders-page .form-group {
+  margin-bottom: 1rem;
+}
+
+.stakeholders-page .form-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+}
+
+.stakeholders-page .form-group input,
+.stakeholders-page .form-group select,
+.stakeholders-page .form-group textarea {
+  width: 100%;
+  padding: 0.7rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.stakeholders-page .form-group textarea {
+  min-height: 100px;
+  resize: vertical;
+}
+
+/* License key display */
+.stakeholders-page .license-key-display {
+  background-color: #eaf5ff;
+  border: 1px dashed #3498db;
+  padding: 1rem;
+  border-radius: 4px;
+  margin-top: 1rem;
+  font-family: monospace;
+  word-break: break-all;
+}
+
+/* Responsive breakpoints */
+@media (max-width: 768px) {
+  .stakeholders-page .table-container {
+    overflow-x: auto;
+  }
+  
+  .stakeholders-page table {
+    min-width: 600px;
+  }
+  
+  .stakeholders-page .filter-controls {
+    flex-direction: column;
+  }
+}
+
+/* Truncated address tooltip */
+.address-display {
+  position: relative;
+  cursor: pointer;
+}
+
+.address-display:hover::after {
+  content: attr(data-full-address);
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  background-color: #333;
+  color: white;
+  padding: 0.5rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  white-space: nowrap;
+  z-index: 100;
+}

@@ -86,6 +86,13 @@ contract AccessControl {
     function isActive(address account) public view returns (bool) {
         return _roles[account] != Role.NONE && _activeStatus[account];
     }
+    
+    /**
+     * @dev Check if account has admin role and is active.
+     */
+    function isAdmin(address account) public view returns (bool) {
+        return hasRole(account, Role.ADMIN);
+    }
 
     /**
      * @dev Grant role (activates if role not NONE).

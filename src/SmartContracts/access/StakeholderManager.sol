@@ -8,7 +8,6 @@ import "./AccessControl.sol";
  * @dev Manages stakeholder registration, partnership, and license keys with explicit active flag.
  */
 contract StakeholderManager is AccessControl {
-
     struct Stakeholder {
         address stakeholderAddress;
         Role role;
@@ -62,16 +61,52 @@ contract StakeholderManager is AccessControl {
     uint256 public pendingRequests;
 
     // Events
-    event StakeholderRegistered(address indexed stakeholder, Role indexed role, string name, address indexed registeredBy);
-    event StakeholderDeactivated(address indexed stakeholder, address indexed deactivatedBy);
-    event StakeholderReactivated(address indexed stakeholder, address indexed reactivatedBy);
-    event PartnershipUpdated(address indexed a, address indexed b, bool authorized);
+    event StakeholderRegistered(
+        address indexed stakeholder,
+        Role indexed role,
+        string name,
+        address indexed registeredBy
+    );
+    event StakeholderDeactivated(
+        address indexed stakeholder,
+        address indexed deactivatedBy
+    );
+    event StakeholderReactivated(
+        address indexed stakeholder,
+        address indexed reactivatedBy
+    );
+    event PartnershipUpdated(
+        address indexed a,
+        address indexed b,
+        bool authorized
+    );
 
-    event RegistrationRequested(uint256 indexed requestId, address indexed applicant, Role indexed requestedRole, string name);
-    event RegistrationReviewed(uint256 indexed requestId, address indexed applicant, RequestStatus status, address indexed reviewedBy);
-    event RegistrationCancelled(uint256 indexed requestId, address indexed applicant);
-    event LicenseKeyGenerated(address indexed stakeholder, string licenseKey, uint256 timestamp);
-    event LicenseKeyVerified(string licenseKey, address indexed stakeholder, bool isValid);
+    event RegistrationRequested(
+        uint256 indexed requestId,
+        address indexed applicant,
+        Role indexed requestedRole,
+        string name
+    );
+    event RegistrationReviewed(
+        uint256 indexed requestId,
+        address indexed applicant,
+        RequestStatus status,
+        address indexed reviewedBy
+    );
+    event RegistrationCancelled(
+        uint256 indexed requestId,
+        address indexed applicant
+    );
+    event LicenseKeyGenerated(
+        address indexed stakeholder,
+        string licenseKey,
+        uint256 timestamp
+    );
+    event LicenseKeyVerified(
+        string licenseKey,
+        address indexed stakeholder,
+        bool isValid
+    );
 
     // --- Registration flow ---
 
@@ -84,7 +119,10 @@ contract StakeholderManager is AccessControl {
         string calldata businessDescription,
         string calldata contactEmail
     ) external returns (uint256) {
-        require(requestedRole != Role.NONE && requestedRole != Role.ADMIN, "Invalid role");
+        require(
+            requestedRole != Role.NONE && requestedRole != Role.ADMIN,
+            "Invalid role"
+        );
         require(bytes(name).length > 0, "Name required");
         require(bytes(licenseId).length > 0, "License ID required");
         require(bytes(location).length > 0, "Location required");
@@ -114,14 +152,21 @@ contract StakeholderManager is AccessControl {
         return requestId;
     }
 
-    function approveRegistrationRequest(uint256 requestId, string calldata reviewNotes) external onlyAdmin {
+    function approveRegistrationRequest(
+        uint256 requestId,
+        string calldata reviewNotes
+    ) external onlyAdmin {
         require(_requestExists(requestId), "Request missing");
         RegistrationRequest storage req = registrationRequests[requestId];
         require(req.status == RequestStatus.PENDING, "Not pending");
         require(!isActive(req.applicant), "Already active");
         require(!blacklistedAddresses[req.applicant], "Blacklisted");
 
-        string memory licenseKey = _generateLicenseKey(req.applicant, req.requestedRole, block.timestamp);
+        string memory licenseKey = _generateLicenseKey(
+            req.applicant,
+            req.requestedRole,
+            block.timestamp
+        );
 
         req.status = RequestStatus.APPROVED;
         req.reviewedBy = msg.sender;
@@ -140,11 +185,19 @@ contract StakeholderManager is AccessControl {
             licenseKey
         );
 
-        emit RegistrationReviewed(requestId, req.applicant, RequestStatus.APPROVED, msg.sender);
+        emit RegistrationReviewed(
+            requestId,
+            req.applicant,
+            RequestStatus.APPROVED,
+            msg.sender
+        );
         emit LicenseKeyGenerated(req.applicant, licenseKey, block.timestamp);
     }
 
-    function rejectRegistrationRequest(uint256 requestId, string calldata reviewNotes) external onlyAdmin {
+    function rejectRegistrationRequest(
+        uint256 requestId,
+        string calldata reviewNotes
+    ) external onlyAdmin {
         require(_requestExists(requestId), "Request missing");
         RegistrationRequest storage req = registrationRequests[requestId];
         require(req.status == RequestStatus.PENDING, "Not pending");
@@ -155,7 +208,12 @@ contract StakeholderManager is AccessControl {
         req.reviewNotes = reviewNotes;
         pendingRequests--;
 
-        emit RegistrationReviewed(requestId, req.applicant, RequestStatus.REJECTED, msg.sender);
+        emit RegistrationReviewed(
+            requestId,
+            req.applicant,
+            RequestStatus.REJECTED,
+            msg.sender
+        );
     }
 
     function cancelRegistrationRequest(uint256 requestId) external {
@@ -177,17 +235,23 @@ contract StakeholderManager is AccessControl {
         return stakeholders[msg.sender].licenseKey;
     }
 
-    function getLicenseKey(address stakeholder) external view onlyAdmin returns (string memory) {
+    function getLicenseKey(
+        address stakeholder
+    ) external view onlyAdmin returns (string memory) {
         require(isActive(stakeholder), "Not fully active");
         return stakeholders[stakeholder].licenseKey;
     }
 
-    function getLicenseKeyForAddress(address stakeholder) external view returns (string memory) {
+    function getLicenseKeyForAddress(
+        address stakeholder
+    ) external view returns (string memory) {
         require(isActive(stakeholder), "Not active");
         return stakeholders[stakeholder].licenseKey;
     }
 
-    function verifyLicenseKey(string calldata licenseKey)
+    function verifyLicenseKey(
+        string calldata licenseKey
+    )
         external
         view
         returns (
@@ -213,7 +277,9 @@ contract StakeholderManager is AccessControl {
         return (isValid, stakeholder, role, name, registeredAt);
     }
 
-    function regenerateLicenseKey(address stakeholder) external onlyAdmin returns (string memory) {
+    function regenerateLicenseKey(
+        address stakeholder
+    ) external onlyAdmin returns (string memory) {
         require(isActive(stakeholder), "Not fully active");
 
         Stakeholder storage s = stakeholders[stakeholder];
@@ -222,7 +288,11 @@ contract StakeholderManager is AccessControl {
             delete licenseKeyToAddress[oldKey];
         }
 
-        string memory newKey = _generateLicenseKey(stakeholder, s.role, block.timestamp);
+        string memory newKey = _generateLicenseKey(
+            stakeholder,
+            s.role,
+            block.timestamp
+        );
         s.licenseKey = newKey;
         s.licenseKeyGeneratedAt = block.timestamp;
         licenseKeyToAddress[newKey] = stakeholder;
@@ -263,14 +333,19 @@ contract StakeholderManager is AccessControl {
         licenseKeyToAddress[licenseKey] = stakeholder;
 
         // LAST: Set role and activate (atomic)
-        _setRole(stakeholder, role); // This activates in AccessControl
+        // This activates in AccessControl
+        _setRole(stakeholder, role);
 
         emit StakeholderRegistered(stakeholder, role, name, msg.sender);
     }
 
     // --- Partnership & transaction logic ---
 
-    function setPartnership(address a, address b, bool authorized) external onlyAdmin {
+    function setPartnership(
+        address a,
+        address b,
+        bool authorized
+    ) external onlyAdmin {
         require(isActive(a), "A not fully active");
         require(isActive(b), "B not fully active");
 
@@ -281,7 +356,10 @@ contract StakeholderManager is AccessControl {
         emit PartnershipUpdated(a, b, authorized);
     }
 
-    function isPartnershipAuthorized(address a, address b) external view returns (bool) {
+    function isPartnershipAuthorized(
+        address a,
+        address b
+    ) external view returns (bool) {
         return stakeholders[a].authorizedPartners[b];
     }
 
@@ -305,11 +383,13 @@ contract StakeholderManager is AccessControl {
 
         // Simple business rules
         if (fromRole == Role.FARMER && toRole == Role.PROCESSOR) return true;
-        if (fromRole == Role.PROCESSOR && toRole == Role.DISTRIBUTOR) return true;
+        if (fromRole == Role.PROCESSOR && toRole == Role.DISTRIBUTOR)
+            return true;
 
         // Partnership fallback
-        return stakeholders[from].authorizedPartners[to] &&
-               stakeholders[to].authorizedPartners[from];
+        return
+            stakeholders[from].authorizedPartners[to] &&
+            stakeholders[to].authorizedPartners[from];
     }
 
     // --- Lifecycle & admin controls ---
@@ -322,12 +402,18 @@ contract StakeholderManager is AccessControl {
 
     function reactivateStakeholder(address stakeholder) external onlyAdmin {
         require(!isActive(stakeholder), "Already active");
-        require(stakeholders[stakeholder].stakeholderAddress != address(0), "Not registered");
+        require(
+            stakeholders[stakeholder].stakeholderAddress != address(0),
+            "Not registered"
+        );
         _setRole(stakeholder, stakeholders[stakeholder].role);
         emit StakeholderReactivated(stakeholder, msg.sender);
     }
 
-    function blacklistAddress(address addr, bool isBlacklisted) external onlyAdmin {
+    function blacklistAddress(
+        address addr,
+        bool isBlacklisted
+    ) external onlyAdmin {
         require(addr != address(0), "Invalid");
         blacklistedAddresses[addr] = isBlacklisted;
     }
@@ -346,14 +432,28 @@ contract StakeholderManager is AccessControl {
         require(!isFullyActive(stakeholder), "Already active");
         require(!blacklistedAddresses[stakeholder], "Blacklisted");
 
-        string memory licenseKey = _generateLicenseKey(stakeholder, role, block.timestamp);
-        _registerStakeholderWithLicenseKey(stakeholder, role, name, licenseId, location, certification, licenseKey);
+        string memory licenseKey = _generateLicenseKey(
+            stakeholder,
+            role,
+            block.timestamp
+        );
+        _registerStakeholderWithLicenseKey(
+            stakeholder,
+            role,
+            name,
+            licenseId,
+            location,
+            certification,
+            licenseKey
+        );
         emit LicenseKeyGenerated(stakeholder, licenseKey, block.timestamp);
     }
 
     // --- Views / stats ---
 
-    function getStakeholderInfo(address stakeholder)
+    function getStakeholderInfo(
+        address stakeholder
+    )
         external
         view
         returns (
@@ -366,12 +466,25 @@ contract StakeholderManager is AccessControl {
             uint256 registeredAt
         )
     {
-        require(stakeholders[stakeholder].stakeholderAddress != address(0), "Not found");
+        require(
+            stakeholders[stakeholder].stakeholderAddress != address(0),
+            "Not found"
+        );
         Stakeholder storage s = stakeholders[stakeholder];
-        return (s.role, s.name, s.licenseId, s.location, s.certification, isFullyActive(stakeholder), s.registeredAt);
+        return (
+            s.role,
+            s.name,
+            s.licenseId,
+            s.location,
+            s.certification,
+            isFullyActive(stakeholder),
+            s.registeredAt
+        );
     }
 
-    function getCompleteStakeholderInfo(address stakeholder)
+    function getCompleteStakeholderInfo(
+        address stakeholder
+    )
         external
         view
         returns (
@@ -386,8 +499,14 @@ contract StakeholderManager is AccessControl {
             uint256 licenseKeyGeneratedAt
         )
     {
-        require(stakeholders[stakeholder].stakeholderAddress != address(0), "Not found");
-        require(msg.sender == stakeholder || hasRole(msg.sender, Role.ADMIN), "Forbidden");
+        require(
+            stakeholders[stakeholder].stakeholderAddress != address(0),
+            "Not found"
+        );
+        require(
+            msg.sender == stakeholder || hasRole(msg.sender, Role.ADMIN),
+            "Forbidden"
+        );
 
         Stakeholder storage s = stakeholders[stakeholder];
         return (
@@ -407,7 +526,9 @@ contract StakeholderManager is AccessControl {
         return allStakeholders;
     }
 
-    function getStakeholdersByRole(Role role) external view returns (address[] memory) {
+    function getStakeholdersByRole(
+        Role role
+    ) external view returns (address[] memory) {
         return stakeholdersByRole[role];
     }
 
@@ -419,7 +540,9 @@ contract StakeholderManager is AccessControl {
         return stakeholders[stakeholder].registeredAt > 0;
     }
 
-    function getStakeholderRole(address stakeholder) external view returns (Role) {
+    function getStakeholderRole(
+        address stakeholder
+    ) external view returns (Role) {
         return stakeholders[stakeholder].role;
     }
 
@@ -443,7 +566,12 @@ contract StakeholderManager is AccessControl {
         totalAdmins = stakeholdersByRole[Role.ADMIN].length;
     }
 
-    function getPendingRequests() external view onlyAdmin returns (uint256[] memory) {
+    function getPendingRequests()
+        external
+        view
+        onlyAdmin
+        returns (uint256[] memory)
+    {
         uint256[] memory result = new uint256[](pendingRequests);
         uint256 count = 0;
         for (uint256 i = 1; i < nextRequestId; i++) {
@@ -454,8 +582,51 @@ contract StakeholderManager is AccessControl {
         return result;
     }
 
-    function getUserRequests(address applicant) external view returns (uint256[] memory) {
+    function getUserRequests(
+        address applicant
+    ) external view returns (uint256[] memory) {
         return userRequests[applicant];
+    }
+
+    function getRegistrationRequest(
+        uint256 requestId
+    ) external view returns (
+        uint256,       // requestId
+        address,       // applicant
+        Role,          // requestedRole
+        string memory, // name
+        string memory, // licenseId
+        string memory, // location
+        string memory, // certification
+        string memory, // businessDescription
+        string memory, // contactEmail
+        uint256,       // requestedAt
+        RequestStatus, // status
+        address,       // reviewedBy
+        uint256,       // reviewedAt
+        string memory, // reviewNotes
+        string memory  // generatedLicenseKey
+    ) {
+        require(_requestExists(requestId), "Request does not exist");
+        RegistrationRequest storage req = registrationRequests[requestId];
+        
+        return (
+            req.requestId,
+            req.applicant,
+            req.requestedRole,
+            req.name,
+            req.licenseId,
+            req.location,
+            req.certification,
+            req.businessDescription,
+            req.contactEmail,
+            req.requestedAt,
+            req.status,
+            req.reviewedBy,
+            req.reviewedAt,
+            req.reviewNotes,
+            req.generatedLicenseKey
+        );
     }
 
     function getRegistrationStats()
@@ -483,7 +654,10 @@ contract StakeholderManager is AccessControl {
     // --- Internal helpers ---
 
     function _requestExists(uint256 requestId) internal view returns (bool) {
-        return requestId > 0 && requestId < nextRequestId && registrationRequests[requestId].requestId != 0;
+        return
+            requestId > 0 &&
+            requestId < nextRequestId &&
+            registrationRequests[requestId].requestId != 0;
     }
 
     // --- License key generation (proper hex) ---
@@ -493,14 +667,37 @@ contract StakeholderManager is AccessControl {
         Role role,
         uint256 timestamp
     ) internal pure returns (string memory) {
-        bytes32 hash = keccak256(abi.encodePacked("LICENSE_KEY_", stakeholder, role, timestamp, "SUPPLY_CHAIN_2024"));
-        bytes memory segment1 = _toFixedLengthHex(uint32(uint256(hash) >> 224), 8);
-        bytes memory segment2 = _toFixedLengthHex(uint32((uint256(hash) >> 192) & 0xFFFFFFFF), 8);
-        bytes memory segment3 = _toFixedLengthHex(uint32((uint256(hash) >> 160) & 0xFFFFFFFF), 8);
-        return string(abi.encodePacked("SC-", segment1, "-", segment2, "-", segment3));
+        bytes32 hash = keccak256(
+            abi.encodePacked(
+                "LICENSE_KEY_",
+                stakeholder,
+                role,
+                timestamp,
+                "SUPPLY_CHAIN_2024"
+            )
+        );
+        bytes memory segment1 = _toFixedLengthHex(
+            uint32(uint256(hash) >> 224),
+            8
+        );
+        bytes memory segment2 = _toFixedLengthHex(
+            uint32((uint256(hash) >> 192) & 0xFFFFFFFF),
+            8
+        );
+        bytes memory segment3 = _toFixedLengthHex(
+            uint32((uint256(hash) >> 160) & 0xFFFFFFFF),
+            8
+        );
+        return
+            string(
+                abi.encodePacked("SC-", segment1, "-", segment2, "-", segment3)
+            );
     }
 
-    function _toFixedLengthHex(uint256 value, uint256 length) internal pure returns (bytes memory) {
+    function _toFixedLengthHex(
+        uint256 value,
+        uint256 length
+    ) internal pure returns (bytes memory) {
         bytes memory buffer = new bytes(length);
         for (uint256 i = length; i > 0; --i) {
             uint8 nibble = uint8(value & 0xf);
@@ -511,6 +708,9 @@ contract StakeholderManager is AccessControl {
     }
 
     function _nibbleToHexChar(uint8 nibble) internal pure returns (bytes1) {
-        return nibble < 10 ? bytes1(uint8(48 + nibble)) : bytes1(uint8(87 + nibble)); // '0'-'9', 'a'-'f'
+        return
+            nibble < 10
+                ? bytes1(uint8(48 + nibble))
+                : bytes1(uint8(87 + nibble)); // '0'-'9', 'a'-'f'
     }
 }

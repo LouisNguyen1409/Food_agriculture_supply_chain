@@ -5,7 +5,11 @@ import "./App.css"
 import "./styles/pages.css"
 
 // Import components and pages
-import { Home, Verify, Track, CreateProduct, CreateShipment } from "./pages"
+import { Home } from "./pages"
+import Stakeholders from "./pages/Stakeholders"
+import StakeholderRegistration from "./pages/StakeholderRegistration"
+import Farmer from "./pages/Farmer"
+import Shipper from "./pages/Shipper"
 import AccountSwitcher from "./components/AccountSwitcher"
 
 // Network configuration
@@ -106,41 +110,33 @@ function App() {
                                 <Link to="/">Home</Link>
                             </li>
                             <li>
-                                <Link to="/create-product">Create Product</Link>
+                                <Link to="/stakeholders">Stakeholder Management</Link>
                             </li>
                             <li>
-                                <Link to="/create-shipment">
-                                    Create Shipment
-                                </Link>
+                                <Link to="/register">Register as Stakeholder</Link>
                             </li>
                             <li>
-                                <Link to="/verify">Verify Product</Link>
+                                <Link to="/farmer">Farmer Dashboard</Link>
                             </li>
                             <li>
-                                <Link to="/track">Track Shipment</Link>
+                                <Link to="/shipper">Shipper Dashboard</Link>
                             </li>
                         </ul>
                     </nav>
 
                     <Routes>
                         <Route path="/" element={<Home />} />
-                        <Route
-                            path="/create-product"
-                            element={<CreateProduct />}
-                        />
-                        <Route
-                            path="/create-shipment"
-                            element={<CreateShipment />}
-                        />
-                        <Route path="/verify" element={<Verify />} />
-                        <Route path="/track" element={<Track />} />
+                        <Route path="/stakeholders" element={<Stakeholders />} />
+                        <Route path="/register" element={<StakeholderRegistration />} />
+                        <Route path="/farmer" element={<Farmer />} />
+                        <Route path="/shipper" element={<Shipper />} />
                     </Routes>
                 </main>
 
                 <footer>
                     <p>
                         © {new Date().getFullYear()} Agricultural Supply Chain -
-                        Public Verification Portal
+                        Admin Portal
                     </p>
                 </footer>
             </div>
