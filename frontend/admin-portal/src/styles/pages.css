@@ -1,5 +1,5 @@
 /* General styles */
-.container {
+.container, .page-container {
   max-width: 1200px;
   margin: 0 auto;
   padding: 20px;
@@ -48,6 +48,149 @@
 textarea.form-control {
   min-height: 100px;
   resize: vertical;
+}
+
+/* Stakeholder Management Page Styles */
+.form-section {
+  background-color: #f8f9fa;
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 30px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.stakeholder-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+.stakeholder-form .form-group {
+  margin-bottom: 15px;
+}
+
+.stakeholder-form input,
+.stakeholder-form select {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.stakeholder-form .submit-btn {
+  grid-column: 1 / 3;
+  padding: 12px;
+  background-color: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 600;
+  transition: background-color 0.3s;
+}
+
+.stakeholder-form .submit-btn:hover {
+  background-color: #3e8e41;
+}
+
+.stakeholder-form .submit-btn:disabled {
+  background-color: #cccccc;
+  cursor: not-allowed;
+}
+
+.stakeholders-list table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 20px;
+}
+
+.stakeholders-list th,
+.stakeholders-list td {
+  border: 1px solid #ddd;
+  padding: 10px;
+  text-align: left;
+}
+
+.stakeholders-list th {
+  background-color: #f2f2f2;
+  font-weight: 600;
+}
+
+.stakeholders-list tr.inactive {
+  background-color: #ffebee;
+}
+
+.status-badge {
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.status-badge.active {
+  background-color: #e3f2fd;
+  color: #1976d2;
+}
+
+.status-badge.inactive {
+  background-color: #ffebee;
+  color: #d32f2f;
+}
+
+.activate-btn, .deactivate-btn {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: background-color 0.3s;
+}
+
+.activate-btn {
+  background-color: #4CAF50;
+  color: white;
+}
+
+.deactivate-btn {
+  background-color: #f44336;
+  color: white;
+}
+
+.refresh-btn {
+  margin-top: 15px;
+  padding: 8px 16px;
+  background-color: #2196F3;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.admin-warning {
+  background-color: #fff3cd;
+  color: #856404;
+  padding: 15px;
+  border-radius: 4px;
+  margin-bottom: 20px;
+  border-left: 5px solid #ffeeba;
+}
+
+.error-message {
+  background-color: #f8d7da;
+  color: #721c24;
+  padding: 10px;
+  border-radius: 4px;
+  margin-bottom: 15px;
+}
+
+.success-message {
+  background-color: #d4edda;
+  color: #155724;
+  padding: 10px;
+  border-radius: 4px;
+  margin-bottom: 15px;
 }
 
 .btn-primary {
