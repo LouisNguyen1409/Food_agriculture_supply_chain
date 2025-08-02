@@ -106,11 +106,20 @@ const shipmentTrackerABI = [
     "function activateAccount(address) external"
 ];
 
+// OfferManager contract ABI for role granting
+const offerManagerABI = [
+    "function grantRole(address, uint8) external",
+    "function hasRole(address, uint8) external view returns (bool)",
+    "function isActive(address) external view returns (bool)",
+    "function activateAccount(address) external"
+];
+
 // Contract address from environment variables
 const stakeholderManagerAddress = process.env.REACT_APP_STAKEHOLDER_MANAGER_ADDRESS || "0x5FC8d32690cc91D4c39d9d3abcBD16989F875707"; // Fallback for local dev
 const productBatchAddress = process.env.REACT_APP_PRODUCT_BATCH_ADDRESS || "0xa513E6E4b8f2a923D98304ec87F64353C4D5C853"; // ProductBatch contract address
 const registryAddress = process.env.REACT_APP_REGISTRY_ADDRESS || "0x8A791620dd6260079BF849Dc5567aDC3F2FdC318"; // Registry contract address
 const shipmentTrackerAddress = process.env.REACT_APP_SHIPMENT_TRACKER_ADDRESS || "0x610178dA211FEF7D417bC0e6FeD39F05609AD788"; // ShipmentTracker contract address
+const offerManagerAddress = process.env.REACT_APP_OFFER_MANAGER_ADDRESS || "0x2279B7A0a67DB372996a5FaB50D91eAA73d2eBe6"; // OfferManager contract address
 
 interface RegistrationRequest {
     requestId: number;
@@ -638,6 +647,13 @@ const Stakeholders = () => {
                 shipmentTrackerABI,
                 signer
             );
+
+            // Initialize OfferManager contract for role granting
+            const offerManagerContract = new ethers.Contract(
+                offerManagerAddress,
+                offerManagerABI,
+                signer
+            );
             
             console.log(`Approving request ID: ${requestId}`);
             
@@ -696,6 +712,19 @@ const Stakeholders = () => {
                 console.log("Role grant transaction confirmed");
             } catch (roleGrantError) {
                 console.error("Failed to grant role in ShipmentTracker:", roleGrantError);
+                // Don't fail the entire approval if role granting fails
+                // The user can still be approved in StakeholderManager
+            }
+
+            // Grant the requested role to the applicant in OfferManager
+            console.log(`Granting role ${requestedRoleId} to ${requestToApprove.applicant} in OfferManager`);
+            try {
+                const grantRoleTx = await offerManagerContract.grantRole(requestToApprove.applicant, requestedRoleId);
+                console.log("Role grant transaction sent, hash:", grantRoleTx.hash);
+                await grantRoleTx.wait();
+                console.log("Role grant transaction confirmed");
+            } catch (roleGrantError) {
+                console.error("Failed to grant role in OfferManager:", roleGrantError);
                 // Don't fail the entire approval if role granting fails
                 // The user can still be approved in StakeholderManager
             }

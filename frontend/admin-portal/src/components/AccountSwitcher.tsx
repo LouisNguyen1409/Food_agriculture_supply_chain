@@ -74,8 +74,10 @@ const AccountSwitcher: React.FC = () => {
             case 0: return "NONE";
             case 1: return "FARMER";
             case 2: return "PROCESSOR";
-            case 3: return "RETAILER";
-            case 4: return "DISTRIBUTOR";
+            case 3: return "DISTRIBUTOR";
+            case 4: return "SHIPPER";
+            case 5: return "RETAILER";
+            case 6: return "ADMIN";
             default: return "UNKNOWN";
         }
     }
