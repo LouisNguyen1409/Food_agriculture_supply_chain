@@ -1,5 +1,39 @@
 /* Stakeholder Management Page Styles */
 
+/* Tab Navigation Styles */
+.tab-navigation {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 30px;
+  background: white;
+  border-radius: 10px;
+  padding: 10px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.tab-navigation button {
+  padding: 12px 24px;
+  margin: 0 5px;
+  border: none;
+  background: #f8f9fa;
+  color: #495057;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-weight: 500;
+}
+
+.tab-navigation button:hover {
+  background: #e9ecef;
+  transform: translateY(-2px);
+}
+
+.tab-navigation button.active {
+  background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+  color: white;
+  box-shadow: 0 4px 8px rgba(40, 167, 69, 0.3);
+}
+
 /* Modal Styles */
 .modal-overlay {
   position: fixed;

@@ -212,12 +212,13 @@ const AccountSwitcher: React.FC = () => {
                             {formatAddress(currentAccount)}
                         </div>
                         <div className="account-role-info">
-                            <span className="role-badge" style={{ 
-                                backgroundColor: currentRole === "Not Registered" ? "#999" : 
-                                                 isActive ? "#28a745" : "#dc3545" 
-                            }}>
-                                {currentRole}
-                            </span>
+                            {currentRole !== "Not Registered" && (
+                                <span className="role-badge" style={{ 
+                                    backgroundColor: isActive ? "#28a745" : "#dc3545" 
+                                }}>
+                                    {currentRole}
+                                </span>
+                            )}
                             {businessName && (
                                 <span className="business-name">{businessName}</span>
                             )}
@@ -263,7 +264,7 @@ const AccountSwitcher: React.FC = () => {
                                             color: account.role === "Not Registered" ? "#999" : 
                                                   account.isActive ? "green" : "red" 
                                         }}>
-                                            {account.role} {account.isActive === false && account.role !== "Not Registered" ? "(Inactive)" : ""}
+                                            {account.role !== "Not Registered" ? account.role : ""} {account.isActive === false && account.role !== "Not Registered" ? "(Inactive)" : ""}
                                         </span>
                                         {account.address === currentAccount && (
                                             <span className="active-indicator">

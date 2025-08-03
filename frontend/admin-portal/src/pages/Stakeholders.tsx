@@ -998,9 +998,11 @@ const Stakeholders = () => {
         }
         
         .tab-navigation button.active {
-            border-bottom: 3px solid #0066cc;
-            color: #0066cc;
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            color: white;
+            border-bottom: 3px solid #1e7e34;
             font-weight: 600;
+            box-shadow: 0 4px 8px rgba(40, 167, 69, 0.3);
         }
         
         .tab-navigation .badge {
