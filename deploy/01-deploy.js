@@ -47,11 +47,11 @@ module.exports = async ({ getNamedAccounts, deployments }) => {
         waitConfirmations: network.config.blockConfirmations || 1,
     })
     log(`StakeholderManager deployed at ${stakeholderManager.address}`)
-    
+
     // Ensure deployer has admin role
     const StakeholderManager = await ethers.getContractFactory("StakeholderManager")
     const stakeholderManagerContract = StakeholderManager.attach(stakeholderManager.address)
-    
+
     // Explicitly grant admin role to whoever deployed the contract (Role.ADMIN = 6)
     log("Ensuring deployer has admin role...")
     const tx = await stakeholderManagerContract.grantRole(deployer, 6)
@@ -109,6 +109,39 @@ module.exports = async ({ getNamedAccounts, deployments }) => {
     log(`StakeholderRegistry deployed at ${stakeholderRegistry.address}`)
 
     log("----------------------------------------------------")
+    log("Deploying Verification System...")
+
+    // 7. Deploy ProvenanceTracker (depends on ProductBatch and StakeholderManager)
+    log("Deploying ProvenanceTracker...")
+    const provenanceTracker = await deploy("ProvenanceTracker", {
+        from: deployer,
+        args: [],
+        log: true,
+        waitConfirmations: network.config.blockConfirmations || 1,
+    })
+    log(`ProvenanceTracker deployed at ${provenanceTracker.address}`)
+
+    // 8. Deploy QRCodeVerifier (depends on ProductBatch and ProvenanceTracker)
+    log("Deploying QRCodeVerifier...")
+    const qrCodeVerifier = await deploy("QRCodeVerifier", {
+        from: deployer,
+        args: [productBatch.address, provenanceTracker.address, registry.address],
+        log: true,
+        waitConfirmations: network.config.blockConfirmations || 1,
+    })
+    log(`QRCodeVerifier deployed at ${qrCodeVerifier.address}`)
+
+    // 9. Deploy PublicVerification (depends on ProductBatch, ProvenanceTracker, and QRCodeVerifier)
+    log("Deploying PublicVerification...")
+    const publicVerification = await deploy("PublicVerification", {
+        from: deployer,
+        args: [productBatch.address, provenanceTracker.address, qrCodeVerifier.address],
+        log: true,
+        waitConfirmations: network.config.blockConfirmations || 1,
+    })
+    log(`PublicVerification deployed at ${publicVerification.address}`)
+
+    log("----------------------------------------------------")
     log("Setting up oracle feeds on ProductBatch...")
 
     // Get ProductBatch contract instance to set oracle feeds
@@ -129,6 +162,19 @@ module.exports = async ({ getNamedAccounts, deployments }) => {
     log("Weather feeds set on ProductBatch")
 
     log("----------------------------------------------------")
+    log("Setting up verification system integrations...")
+
+    const Registry = await ethers.getContractFactory("Registry")
+    const registryContract = Registry.attach(registry.address)
+
+    await registryContract.setVerificationContracts(
+        provenanceTracker.address,
+        qrCodeVerifier.address,
+        publicVerification.address
+    )
+    log("Verification contracts set in Registry")
+
+    log("----------------------------------------------------")
     log("All contracts deployed successfully!")
     log(`StakeholderManager: ${stakeholderManager.address}`)
     log(`ProductBatch: ${productBatch.address}`)
@@ -136,7 +182,43 @@ module.exports = async ({ getNamedAccounts, deployments }) => {
     log(`Registry: ${registry.address}`)
     log(`ShipmentTracker: ${shipmentTracker.address}`)
     log(`StakeholderRegistry: ${stakeholderRegistry.address}`)
+    log(`ProvenanceTracker: ${provenanceTracker.address}`)
+    log(`QRCodeVerifier: ${qrCodeVerifier.address}`)
+    log(`PublicVerification: ${publicVerification.address}`)
     log("----------------------------------------------------")
+
+    // Save deployment addresses to a file for frontend use
+    const fs = require("fs")
+    const contractAddresses = {
+        StakeholderManager: stakeholderManager.address,
+        ProductBatch: productBatch.address,
+        OfferManager: offerManager.address,
+        Registry: registry.address,
+        ShipmentTracker: shipmentTracker.address,
+        StakeholderRegistry: stakeholderRegistry.address,
+        ProvenanceTracker: provenanceTracker.address,
+        QRCodeVerifier: qrCodeVerifier.address,
+        PublicVerification: publicVerification.address,
+        chainId: chainId,
+        network: network.name
+    }
+
+    // Write to frontend directories
+    const frontendPaths = [
+        "./frontend/public-portal/src/constants/",
+        "./frontend/admin-portal/src/constants/"
+    ]
+
+    for (const frontendPath of frontendPaths) {
+        if (!fs.existsSync(frontendPath)) {
+            fs.mkdirSync(frontendPath, { recursive: true })
+        }
+        fs.writeFileSync(
+            `${frontendPath}contractAddresses.json`,
+            JSON.stringify(contractAddresses, null, 2)
+        )
+        log(`Contract addresses saved to ${frontendPath}contractAddresses.json`)
+    }
 
     // Verify contracts on live networks
     if (
@@ -150,6 +232,9 @@ module.exports = async ({ getNamedAccounts, deployments }) => {
         await verify(registry.address, [])
         await verify(shipmentTracker.address, [productBatch.address])
         await verify(stakeholderRegistry.address, [stakeholderManager.address])
+        await verify(provenanceTracker.address, [productBatch.address, stakeholderManager.address])
+        await verify(qrCodeVerifier.address, [productBatch.address, provenanceTracker.address])
+        await verify(publicVerification.address, [productBatch.address, provenanceTracker.address, qrCodeVerifier.address])
         log("All contracts verified!")
     }
 }

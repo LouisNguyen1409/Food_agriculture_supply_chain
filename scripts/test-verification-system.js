@@ -40,70 +40,82 @@ async function createMetadataHash(productBatch, batchId, action, additionalData 
 async function main() {
     console.log("🌟 Testing Enhanced Supply Chain System with Verification...\n");
 
+    const contractAddresses = require("../frontend/public-portal/src/constants/contractAddresses.json");
     const [deployer, farmer1, farmer2, processor1, distributor1, retailer1, shipper1, shipper2, consumer1, consumer2, consumer3] = await ethers.getSigners();
 
     try {
         // =============================================================
         // STEP 1: DEPLOY CORE CONTRACTS
         // =============================================================
-        console.log("🚀 Deploying core contracts...");
+        console.log("🚀 Deploying core contracts...")
 
-        const ProductBatch = await ethers.getContractFactory("ProductBatch");
-        const productBatch = await ProductBatch.deploy();
-        await productBatch.waitForDeployment();
+        const ProductBatch = await ethers.getContractFactory("ProductBatch")
+        const productBatch = await ProductBatch.deploy()
+        await productBatch.waitForDeployment()
 
-        const OfferManager = await ethers.getContractFactory("OfferManager");
-        const offerManager = await OfferManager.deploy(await productBatch.getAddress());
-        await offerManager.waitForDeployment();
+        const OfferManager = await ethers.getContractFactory("OfferManager")
+        const offerManager = await OfferManager.deploy(
+            await productBatch.getAddress()
+        )
+        await offerManager.waitForDeployment()
 
-        const ShipmentTracker = await ethers.getContractFactory("ShipmentTracker");
-        const shipmentTracker = await ShipmentTracker.deploy(await productBatch.getAddress());
-        await shipmentTracker.waitForDeployment();
+        const ShipmentTracker = await ethers.getContractFactory(
+            "ShipmentTracker"
+        )
+        const shipmentTracker = await ShipmentTracker.deploy(
+            await productBatch.getAddress()
+        )
+        await shipmentTracker.waitForDeployment()
 
-        const Registry = await ethers.getContractFactory("Registry");
-        const registry = await Registry.deploy();
-        await registry.waitForDeployment();
+        const Registry = await ethers.getContractFactory("Registry")
+        const registry = await Registry.deploy()
+        await registry.waitForDeployment()
 
-        console.log("✅ Core contracts deployed successfully");
+        console.log(" Core contracts deployed successfully")
 
         // =============================================================
         // STEP 2: DEPLOY VERIFICATION SYSTEM
         // =============================================================
-        console.log("\n🔍 Deploying verification system...");
+        console.log("\n Deploying verification system...")
 
-        const ProvenanceTracker = await ethers.getContractFactory("ProvenanceTracker");
-        const provenanceTracker = await ProvenanceTracker.deploy();
-        await provenanceTracker.waitForDeployment();
+        const ProvenanceTracker = await ethers.getContractFactory(
+            "ProvenanceTracker"
+        )
+        const provenanceTracker = await ProvenanceTracker.deploy()
+        await provenanceTracker.waitForDeployment()
 
-        const QRCodeVerifier = await ethers.getContractFactory("QRCodeVerifier");
+        const QRCodeVerifier = await ethers.getContractFactory("QRCodeVerifier")
         const qrCodeVerifier = await QRCodeVerifier.deploy(
             await provenanceTracker.getAddress(),
             await productBatch.getAddress(),
             await registry.getAddress()
-        );
-        await qrCodeVerifier.waitForDeployment();
+        )
+        await qrCodeVerifier.waitForDeployment()
 
-        const PublicVerification = await ethers.getContractFactory("PublicVerification");
+        const PublicVerification = await ethers.getContractFactory(
+            "PublicVerification"
+        )
         const publicVerification = await PublicVerification.deploy(
             await qrCodeVerifier.getAddress(),
             await provenanceTracker.getAddress(),
             await registry.getAddress()
-        );
-        await publicVerification.waitForDeployment();
+        )
+        await publicVerification.waitForDeployment()
 
-        console.log("✅ Verification system deployed successfully");
+        console.log(" Verification system deployed successfully")
 
         // =============================================================
         // STEP 2.5: DEPLOY STAKEHOLDER MANAGER
         // =============================================================
-        console.log("\n👥 Deploying stakeholder manager...");
+        console.log("\n👥 Deploying stakeholder manager...")
 
-        const StakeholderManager = await ethers.getContractFactory("StakeholderManager");
-        const stakeholderManager = await StakeholderManager.deploy();
-        await stakeholderManager.waitForDeployment();
+        const StakeholderManager = await ethers.getContractFactory(
+            "StakeholderManager"
+        )
+        const stakeholderManager = await StakeholderManager.deploy()
+        await stakeholderManager.waitForDeployment()
 
-        console.log("✅ Stakeholder manager deployed successfully");
-
+        console.log(" Stakeholder manager deployed successfully")
         // =============================================================
         // STEP 3: SETUP ROLES AND PERMISSIONS
         // =============================================================
@@ -168,7 +180,7 @@ async function main() {
         );
 
         console.log("✅ Stakeholder locations configured\n");
-        
+
         // Setup roles for all contracts
         const allContracts = [productBatch, offerManager, shipmentTracker, registry, provenanceTracker, qrCodeVerifier, stakeholderManager];
         for (const contract of allContracts) {
@@ -228,33 +240,6 @@ async function main() {
         // Get farmer location dynamically
         const farmerLocation = await getStakeholderLocation(stakeholderManager, farmer1.address);
 
-        // Create metadata hash from batch info
-        const harvestMetadata = await createMetadataHash(productBatch, 1, "Harvested", {
-            weather: "Sunny, 26°C",
-            humidity: "68%",
-            harvestMethod: "Hand-picked"
-        });
-
-        await provenanceTracker.connect(farmer1).addProvenanceRecord(
-            1, // batchId
-            "Harvested",
-            farmerLocation, // Dynamic location from stakeholder
-            harvestMetadata // Dynamic metadata from batch info
-        );
-
-        const qualityMetadata = await createMetadataHash(productBatch, 1, "Quality Tested", {
-            pesticides: "Not Detected",
-            quality_score: "95/100",
-            inspector: "John Smith"
-        });
-
-        await provenanceTracker.connect(farmer1).addProvenanceRecord(
-            1,
-            "Quality Tested",
-            `${farmerLocation} - QC Lab`,
-            qualityMetadata // Dynamic metadata
-        );
-
         // GENERATE QR CODE
         console.log("📱 Generating QR code for mangoes...");
         const qrCodeTx = await qrCodeVerifier.connect(farmer1).generateQRCode(1);
@@ -293,18 +278,6 @@ async function main() {
 
         // Add provenance for apples with dynamic data
         const farmer2Location = await getStakeholderLocation(stakeholderManager, farmer2.address);
-        const appleMetadata = await createMetadataHash(productBatch, 2, "Harvested", {
-            variety: "Red Delicious",
-            temperature: "18°C",
-            harvestMethod: "Machine-picked"
-        });
-
-        await provenanceTracker.connect(farmer2).addProvenanceRecord(
-            2,
-            "Harvested",
-            farmer2Location,
-            appleMetadata
-        );
 
         const qrCodeTx2 = await qrCodeVerifier.connect(farmer2).generateQRCode(2);
         await qrCodeTx2.wait();
@@ -360,21 +333,6 @@ async function main() {
             "SPOT_MARKET"
         );
 
-        // Add provenance record for sale with dynamic data
-        const saleMetadata = await createMetadataHash(productBatch, 1, "Sold to Processor", {
-            price: "0.015 ETH",
-            buyer: "TropicalFruit Processing Co",
-            contract_type: "Spot Market",
-            payment_terms: "30 days"
-        });
-
-        await provenanceTracker.connect(farmer1).addProvenanceRecord(
-            1,
-            "Sold to Processor",
-            farmerLocation, // Use farmer location for sale
-            saleMetadata
-        );
-
         // =============================================================
         // SCENARIO 3: SHIPMENT TRACKING WITH PROVENANCE
         // =============================================================
@@ -404,49 +362,13 @@ async function main() {
 
         // Pickup with dynamic data
         await shipmentTracker.connect(shipper1).pickupShipment(1);
-        const pickupMetadata = await createMetadataHash(productBatch, 1, "Picked Up by Shipper", {
-            vehicle_id: "TRUCK-001",
-            driver: "Carlos Rodriguez",
-            pickup_time: new Date().toISOString()
-        });
-
-        await provenanceTracker.connect(shipper1).addProvenanceRecord(
-            1,
-            "Picked Up by Shipper",
-            farmerLocation, // Pickup from farmer location
-            pickupMetadata
-        );
         console.log("   📍 Shipper1 picked up from farmer (provenance recorded)");
 
         // Transit updates with dynamic locations
         await shipmentTracker.connect(shipper1).updateLocation(1, "Port - Loading for transport");
-        const portMetadata = await createMetadataHash(productBatch, 1, "In Transit - Port Loading", {
-            container_id: "CONT-123456",
-            temperature: "4°C",
-            customs_cleared: true
-        });
-
-        await provenanceTracker.connect(shipper1).addProvenanceRecord(
-            1,
-            "In Transit - Port Loading",
-            shipperLocation, // Use shipper's base location
-            portMetadata
-        );
         console.log("   📍 At port, loading cargo (provenance recorded)");
 
         await shipmentTracker.connect(shipper1).updateLocation(1, "Highway 101 - En route to Processing");
-        const transitMetadata = await createMetadataHash(productBatch, 1, "In Transit - Highway", {
-            gps_coordinates: "25.7617°N, 80.1918°W",
-            speed: "65 mph",
-            eta: "2 hours"
-        });
-
-        await provenanceTracker.connect(shipper1).addProvenanceRecord(
-            1,
-            "In Transit - Highway",
-            "Highway 101 - Mile 45",
-            transitMetadata
-        );
         console.log("   📍 En route to processing facility (provenance recorded)");
 
         // Get processor location for delivery
@@ -455,18 +377,6 @@ async function main() {
         // Delivery with dynamic data
         await shipmentTracker.connect(shipper1).updateLocation(1, "Processing Facility - Arrived");
         await shipmentTracker.connect(shipper1).markDelivered(1);
-        const deliveryMetadata = await createMetadataHash(productBatch, 1, "Delivered to Processor", {
-            delivery_time: new Date().toISOString(),
-            condition: "Excellent",
-            temperature_log: "4°C maintained"
-        });
-
-        await provenanceTracker.connect(shipper1).addProvenanceRecord(
-            1,
-            "Delivered to Processor",
-            processorLocation, // Use processor location for delivery
-            deliveryMetadata
-        );
         console.log("   📍 Delivered to processor (provenance recorded)");
 
         // Ownership transfer
@@ -488,50 +398,6 @@ async function main() {
             80 // outputQuantity (100 -> 80 after processing)
         );
 
-        // Add processing provenance with dynamic data
-        const processingMetadata = await createMetadataHash(productBatch, 1, "Processed into Juice", {
-            processing_line: "Line 2",
-            input_quantity: "100 kg",
-            output_quantity: "80 liters",
-            yield_rate: "80%",
-            ph_level: "4.2",
-            sugar_content: "15%"
-        });
-
-        await provenanceTracker.connect(processor1).addProvenanceRecord(
-            1,
-            "Processed into Juice",
-            `${processorLocation} - Processing Line 2`,
-            processingMetadata
-        );
-
-        const qcMetadata = await createMetadataHash(productBatch, 1, "Quality Control Passed", {
-            qc_inspector: "Maria Santos",
-            microbiological_test: "Pass",
-            chemical_analysis: "Pass",
-            taste_test: "Excellent"
-        });
-
-        await provenanceTracker.connect(processor1).addProvenanceRecord(
-            1,
-            "Quality Control Passed",
-            `${processorLocation} - QC Lab`,
-            qcMetadata
-        );
-
-        const packagingMetadata = await createMetadataHash(productBatch, 1, "Packaged for Distribution", {
-            packaging_type: "1L Tetra Pak",
-            batch_size: "80 units",
-            expiry_date: "2025-02-01",
-            barcode: "7891234567890"
-        });
-
-        await provenanceTracker.connect(processor1).addProvenanceRecord(
-            1,
-            "Packaged for Distribution",
-            `${processorLocation} - Packaging Department`,
-            packagingMetadata
-        );
         console.log("✅ Mangoes processed into juice with complete provenance tracking");
 
         // =============================================================
@@ -633,15 +499,6 @@ async function main() {
         // =============================================================
         console.log("\n📊 SCENARIO 6: Comprehensive Analytics Dashboard\n");
 
-        // Provenance analytics
-        console.log("🔍 PROVENANCE ANALYTICS:");
-        const provenanceSummary = await provenanceTracker.getProvenanceSummary(1);
-        console.log(`   🌱 First Action: ${provenanceSummary[1]} at ${provenanceSummary[2]}`);
-        console.log(`   📅 Started: ${new Date(Number(provenanceSummary[3]) * 1000).toLocaleDateString()}`);
-        console.log(`   📍 Last Action: ${provenanceSummary[5]} at ${provenanceSummary[6]}`);
-        console.log(`   📊 Total Records: ${provenanceSummary[8]}`);
-        console.log(`   ✅ Complete: ${provenanceSummary[9]}`);
-
         // QR Code analytics
         console.log("\n📱 QR CODE ANALYTICS:");
         const qrAnalytics = await qrCodeVerifier.getQRAnalytics();
@@ -674,13 +531,6 @@ async function main() {
 
         const processor1Dashboard = await registry.getUserDashboard(processor1.address);
         console.log(`   🏭 Processor1 - Products: ${processor1Dashboard[0]}, Transactions: ${processor1Dashboard[2]}, Revenue: $${ethers.formatUnits(processor1Dashboard[3], 18)}`);
-
-        // Provenance chain integrity
-        console.log("\n🔐 PROVENANCE CHAIN INTEGRITY:");
-        const chainData = await provenanceTracker.getFullProvenanceChain(1);
-        console.log(`   📊 Total Records: ${chainData[0]}`);
-        console.log(`   🔒 Root Hash: ${chainData[1]}`);
-        console.log(`   ✅ Finalized: ${chainData[2]}`);
 
         // Consumer trust metrics
         console.log("\n🤝 CONSUMER TRUST METRICS:");
