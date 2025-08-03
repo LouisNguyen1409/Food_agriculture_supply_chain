@@ -67,7 +67,10 @@ const stakeholderManagerABI = [
     
     // License key management
     "function regenerateLicenseKey(address) external returns (string)",
-    "function validateLicenseKey(address, string) view returns (bool)",
+    "function getMyLicenseKey() external view returns (string)",
+    "function getLicenseKey(address) external view returns (string)",
+    "function getLicenseKeyForAddress(address) external view returns (string)",
+    "function verifyLicenseKey(string) external view returns (bool, address, uint8, string, uint256)",
     "function getLicenseKeyGeneratedAt(address) view returns (uint256)",
     
     // Statistics
@@ -873,9 +876,17 @@ const Stakeholders = () => {
             return;
         }
         
+        // Validate address format
+        if (!ethers.isAddress(licenseKeyAddress)) {
+            setError("Invalid Ethereum address format. Please enter a valid address starting with 0x");
+            return;
+        }
+        
+        const validatedAddress = ethers.getAddress(licenseKeyAddress);
+        
         showConfirmationModal(
             "Regenerate License Key",
-            `Are you sure you want to regenerate the license key for ${licenseKeyAddress}? This will invalidate any previous key and cannot be undone.`,
+            `Are you sure you want to regenerate the license key for ${validatedAddress}? This will invalidate any previous key and cannot be undone.`,
             async () => {
                 setShowModal(false);
                 setIsProcessing(true);
@@ -893,20 +904,106 @@ const Stakeholders = () => {
                         signer
                     );
                     
-                    // Call the contract to regenerate a license key
-                    const generatedKey = await contract.regenerateLicenseKey(licenseKeyAddress);
+                    // Check if stakeholder exists and is active
+                    try {
+                        const isActive = await contract.isActive(validatedAddress);
+                        if (!isActive) {
+                            setError("Stakeholder is not active. Only active stakeholders can have license keys regenerated.");
+                            return;
+                        }
+                    } catch (checkError) {
+                        setError("Stakeholder not found or not registered in the system.");
+                        return;
+                    }
                     
-                    setSuccess(`License key for ${licenseKeyAddress} regenerated successfully!`);
+                    // Call the contract to regenerate a license key
+                    const tx = await contract.regenerateLicenseKey(validatedAddress);
+                    console.log("License key regeneration transaction sent:", tx.hash);
+                    
+                    // Wait for transaction to be mined
+                    const receipt = await tx.wait();
+                    console.log("License key regeneration transaction confirmed:", receipt);
+                    
+                    // Get the generated license key from the contract
+                    const generatedKey = await contract.getLicenseKey(validatedAddress);
+                    
+                    setSuccess(`License key for ${validatedAddress} regenerated successfully!`);
                     setLicenseKey(generatedKey);
                     
                 } catch (err: any) {
-                    setError("Error regenerating license key: " + err.message);
-                    console.error(err);
+                    console.error("Error regenerating license key:", err);
+                    if (err.message.includes("Not fully active")) {
+                        setError("Stakeholder is not active. Only active stakeholders can have license keys regenerated.");
+                    } else if (err.message.includes("Not registered")) {
+                        setError("Stakeholder not found or not registered in the system.");
+                    } else {
+                        setError("Error regenerating license key: " + err.message);
+                    }
                 } finally {
                     setIsProcessing(false);
                 }
             }
         );
+    };
+    
+    // Function to view existing license key
+    const viewLicenseKey = async () => {
+        if (!licenseKeyAddress) {
+            setError("Please enter a stakeholder address.");
+            return;
+        }
+        
+        // Validate address format
+        if (!ethers.isAddress(licenseKeyAddress)) {
+            setError("Invalid Ethereum address format. Please enter a valid address starting with 0x");
+            return;
+        }
+        
+        const validatedAddress = ethers.getAddress(licenseKeyAddress);
+        
+        setIsProcessing(true);
+        setError("");
+        setSuccess("");
+        setLicenseKey("");
+        
+        try {
+            const provider = new ethers.BrowserProvider(window.ethereum);
+            const signer = await provider.getSigner();
+            
+            const contract = new ethers.Contract(
+                stakeholderManagerAddress,
+                stakeholderManagerABI,
+                signer
+            );
+            
+            // Check if stakeholder exists and is active
+            try {
+                const isActive = await contract.isActive(validatedAddress);
+                if (!isActive) {
+                    setError("Stakeholder is not active or not found in the system.");
+                    return;
+                }
+            } catch (checkError) {
+                setError("Stakeholder not found or not registered in the system.");
+                return;
+            }
+            
+            // Get the existing license key
+            const existingKey = await contract.getLicenseKey(validatedAddress);
+            
+            if (existingKey && existingKey.length > 0) {
+                setLicenseKey(existingKey);
+                setSuccess(`License key retrieved for ${validatedAddress}`);
+            } else {
+                setError("No license key found for this stakeholder.");
+            }
+            
+        } catch (err: any) {
+            console.error("Error viewing license key:", err);
+            setError("Error retrieving license key: " + err.message);
+        } finally {
+            setIsProcessing(false);
+        }
     };
     
     // Function to handle new registration form changes
@@ -1618,28 +1715,49 @@ const Stakeholders = () => {
                                         type="text" 
                                         value={licenseKeyAddress} 
                                         onChange={(e) => setLicenseKeyAddress(e.target.value)}
-                                        placeholder="Enter stakeholder's Ethereum address"
+                                        placeholder="Enter stakeholder's Ethereum address (0x...)"
                                     />
                                 </div>
                                 
-                                <button 
-                                    onClick={regenerateLicenseKey}
-                                    disabled={!licenseKeyAddress || isProcessing}
-                                >
-                                    Regenerate License Key
-                                </button>
+                                <div className="button-group">
+                                    <button 
+                                        onClick={viewLicenseKey}
+                                        disabled={!licenseKeyAddress || isProcessing}
+                                        className="view-btn"
+                                    >
+                                        View License Key
+                                    </button>
+                                    <button 
+                                        onClick={regenerateLicenseKey}
+                                        disabled={!licenseKeyAddress || isProcessing}
+                                        className="regenerate-btn"
+                                    >
+                                        Regenerate License Key
+                                    </button>
+                                </div>
                             </div>
                             
                             {licenseKey && (
                                 <div className="license-key-result">
-                                    <h3>Generated License Key</h3>
+                                    <h3>License Key</h3>
                                     <div className="key-display">
-                                        <pre>{licenseKey}</pre>
+                                        <div className="key-header">
+                                            <span>License Key for {licenseKeyAddress}:</span>
+                                            <button 
+                                                onClick={() => navigator.clipboard.writeText(licenseKey)}
+                                                className="copy-btn"
+                                                title="Copy to clipboard"
+                                            >
+                                                📋 Copy
+                                            </button>
+                                        </div>
+                                        <pre className="license-key-text">{licenseKey}</pre>
                                     </div>
-                                    <p className="key-note">
-                                        This key has been generated for {licenseKeyAddress} and stored in the contract.
-                                        Please provide this key to the stakeholder securely.
-                                    </p>
+                                    <div className="key-info">
+                                        <p><strong>Format:</strong> SC-XXXXXXXX-XXXXXXXX-XXXXXXXX</p>
+                                        <p><strong>Purpose:</strong> Authentication and access control for stakeholders</p>
+                                        <p><strong>Security:</strong> Cryptographically generated using keccak256 hash</p>
+                                    </div>
                                 </div>
                             )}
                         </div>
