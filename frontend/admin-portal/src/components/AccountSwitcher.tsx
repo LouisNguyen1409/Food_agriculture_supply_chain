@@ -260,12 +260,7 @@ const AccountSwitcher: React.FC = () => {
                                         <span className="account-balance">
                                             {account.balance}
                                         </span>
-                                        <span className="account-role" style={{ 
-                                            color: account.role === "Not Registered" ? "#999" : 
-                                                  account.isActive ? "green" : "red" 
-                                        }}>
-                                            {account.role !== "Not Registered" ? account.role : ""} {account.isActive === false && account.role !== "Not Registered" ? "(Inactive)" : ""}
-                                        </span>
+                                       
                                         {account.address === currentAccount && (
                                             <span className="active-indicator">
                                                 ✓ Active
