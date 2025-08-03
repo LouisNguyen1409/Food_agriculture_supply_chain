@@ -25,6 +25,15 @@ contract Registry is AccessControl {
         bool weatherDependent;   // Whether this product requires weather verification
     }
 
+    struct SimpleSupplyChainStep {
+        address stakeholder;
+        string stakeholderRole;
+        string action;
+        string location;
+        uint256 timestamp;
+        uint256 price;
+    }
+
     struct TransactionRecord {
         uint256 id;
         uint256 batchId;
@@ -771,5 +780,44 @@ contract Registry is AccessControl {
                 ""
             );
         }
+    }
+
+    /**
+    * @dev Get simple supply chain history for verification page
+    */
+    function getSupplyChainHistory(uint256 batchId) external view returns (SimpleSupplyChainStep[] memory) {
+        uint256[] memory transactionIds = batchTransactions[batchId];
+        SimpleSupplyChainStep[] memory steps = new SimpleSupplyChainStep[](transactionIds.length);
+
+        for (uint256 i = 0; i < transactionIds.length; i++) {
+            TransactionRecord storage txn = transactions[transactionIds[i]];
+
+            // Determine role based on transaction type
+            string memory role = "Unknown";
+            if (keccak256(bytes(txn.transactionType)) == keccak256(bytes("SPOT"))) {
+                role = "Farmer";
+            } else if (keccak256(bytes(txn.transactionType)) == keccak256(bytes("PROCESSOR_SALE"))) {
+                role = "Processor";
+            } else if (keccak256(bytes(txn.transactionType)) == keccak256(bytes("DISTRIBUTOR_SALE"))) {
+                role = "Distributor";
+            } else if (keccak256(bytes(txn.transactionType)) == keccak256(bytes("RETAILER_SALE"))) {
+                role = "Retailer";
+            } else if (keccak256(bytes(txn.transactionType)) == keccak256(bytes("CONSUMER_PURCHASE"))) {
+                role = "Consumer";
+            } else {
+                role = "Stakeholder";
+            }
+
+            steps[i] = SimpleSupplyChainStep({
+                stakeholder: txn.buyer,
+                stakeholderRole: role,
+                action: txn.transactionType,
+                location: "Location not specified", // Can be enhanced later
+                timestamp: txn.timestamp,
+                price: txn.localPrice  // FIXED: Use localPrice instead of unitPrice
+            });
+        }
+
+        return steps;
     }
 }

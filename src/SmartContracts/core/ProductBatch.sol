@@ -813,4 +813,62 @@ contract ProductBatch is AccessControl {
 
         return pendingPickups;
     }
+
+    /**
+    * @dev Get all products available from retailers for consumers
+    */
+    function getRetailerProducts() external view returns (
+        uint256[] memory batchIds,
+        address[] memory retailers,
+        string[] memory productNames,
+        string[] memory descriptions,
+        uint256[] memory prices,
+        uint256[] memory quantities,
+        string[] memory origins
+    ) {
+        uint256 count = 0;
+
+        // First, count available products from retailers
+        for (uint256 i = 1; i < nextBatchId; i++) {
+            if (_batchExists(i)) {
+                Batch storage batch = batches[i];
+                if (batch.isAvailableForSale &&
+                    batch.quantity > 0 &&
+                    hasRole(batch.currentOwner, Role.RETAILER)) {
+                    count++;
+                }
+            }
+        }
+        // Initialize arrays
+        batchIds = new uint256[](count);
+        retailers = new address[](count);
+        productNames = new string[](count);
+        descriptions = new string[](count);
+        prices = new uint256[](count);
+        quantities = new uint256[](count);
+        origins = new string[](count);
+
+        // Fill arrays
+        uint256 index = 0;
+        for (uint256 i = 1; i < nextBatchId; i++) {
+            if (_batchExists(i)) {
+                Batch storage batch = batches[i];
+                if (batch.isAvailableForSale &&
+                    batch.quantity > 0 &&
+                    hasRole(batch.currentOwner, Role.RETAILER)) {
+
+                    batchIds[index] = batch.id;
+                    retailers[index] = batch.currentOwner;
+                    productNames[index] = batch.name;
+                    descriptions[index] = batch.description;
+                    prices[index] = batch.basePrice;
+                    quantities[index] = batch.quantity;
+                    origins[index] = batch.originLocation;
+                    index++;
+                }
+            }
+        }
+
+        return (batchIds, retailers, productNames, descriptions, prices, quantities, origins);
+    }
 }
