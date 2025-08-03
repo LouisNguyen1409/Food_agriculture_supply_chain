@@ -2,7 +2,7 @@ const { ethers } = require("hardhat")
 
 async function main() {
     console.log("Testing Fixed Four-Contract System...\n")
-
+  
     const [
         deployer,
         farmer1,
@@ -252,7 +252,7 @@ async function main() {
             processor1.address,
             ethers.parseEther("0.015"),
             100, // quantity
-            "SPOT_MARKET"
+            "SPOT"
         )
 
         // =============================================================
@@ -465,7 +465,7 @@ async function main() {
             distributor1.address,
             ethers.parseEther("0.025"),
             80, // quantity
-            "SPOT_MARKET"
+            "PROCESSOR_SALE"
         )
 
         // Create shipment: Processor -> Distributor
@@ -545,7 +545,7 @@ async function main() {
             retailer1.address,
             ethers.parseEther("0.035"),
             80, // quantity
-            "SPOT_MARKET"
+            "DISTRIBUTOR_SALE"
         )
 
         // Create shipment: Distributor -> Retailer
@@ -595,6 +595,31 @@ async function main() {
         console.log(
             "\n Product journey complete! Ready for consumers at retail store"
         )
+
+
+        try {
+          const retailerProducts = await productBatch.getRetailerProducts();
+          console.log("🏪 Products available for sale:", retailerProducts[0].length);
+
+          if (retailerProducts[0].length > 0) {
+            console.log("   - Product names:", retailerProducts[2]);
+            console.log("   - Quantities:", retailerProducts[5].map(q => Number(q)));
+            console.log("   - Prices (ETH):", retailerProducts[4].map(p => ethers.formatEther(p)));
+          }
+        } catch (e) {
+          console.log("⚠️ getRetailerProducts error:", e.message.split('(')[0]);
+        }
+
+        try {
+          const supplyChain1 = await registry.getSupplyChainHistory(1);
+          console.log("📋 Supply chain steps for Batch 1:", supplyChain1.length);
+
+          if (supplyChain1.length > 0) {
+            console.log("   - First step:", supplyChain1[0].stakeholderRole, supplyChain1[0].action);
+          }
+        } catch (e) {
+          console.log("⚠️ getSupplyChainHistory error:", e.message.split('(')[0]);
+        }
 
         // =============================================================
         // SCENARIO 5: COMPREHENSIVE ANALYTICS

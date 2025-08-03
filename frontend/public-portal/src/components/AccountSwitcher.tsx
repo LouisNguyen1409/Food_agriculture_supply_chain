@@ -1,118 +1,150 @@
 import React, { useState, useEffect } from "react";
 import { ethers } from "ethers";
-import { useContracts } from "../hooks/useContracts";
-import '../styles/AccountSwitcher.css'; // Add this import
+import "../styles/AccountSwitcher.css";
 
 interface Account {
-  address: string;
-  ensName?: string;
-  balance?: string;
+    address: string;
+    balance?: string;
 }
 
 const AccountSwitcher: React.FC = () => {
-  const { isConnected, connectWallet, disconnectWallet, signer, loading } = useContracts();
-  const [currentAccount, setCurrentAccount] = useState<Account | null>(null);
+    const [accounts, setAccounts] = useState<Account[]>([]);
+    const [currentAccount, setCurrentAccount] = useState<string | null>(null);
+    const [isConnected, setIsConnected] = useState<boolean>(false);
 
-  useEffect(() => {
-    if (isConnected && signer) {
-      loadAccountInfo();
-    } else {
-      setCurrentAccount(null);
-    }
-  }, [isConnected, signer]);
+    useEffect(() => {
+        // DON'T auto-connect - remove checkConnection()
+        // checkConnection(); ← REMOVE THIS LINE
 
-  // Listen for account changes
-  useEffect(() => {
-    if (window.ethereum) {
-      const handleAccountsChanged = (accounts: string[]) => {
-        if (accounts.length === 0) {
-          disconnectWallet();
-        } else {
-          setTimeout(loadAccountInfo, 100);
+        // Listen for account changes
+        if (window.ethereum) {
+            window.ethereum.on("accountsChanged", (accounts: string[]) => {
+                if (accounts.length > 0) {
+                    setCurrentAccount(accounts[0]);
+                    setIsConnected(true);
+                    loadAccounts();
+                } else {
+                    setCurrentAccount(null);
+                    setIsConnected(false);
+                    setAccounts([]);
+                }
+            });
+
+            window.ethereum.on("chainChanged", () => {
+                window.location.reload();
+            });
         }
-      };
 
-      window.ethereum.on("accountsChanged", handleAccountsChanged);
+        return () => {
+            if (window.ethereum) {
+                window.ethereum.removeListener("accountsChanged", () => {});
+                window.ethereum.removeListener("chainChanged", () => {});
+            }
+        };
+    }, []);
 
-      return () => {
-        window.ethereum.removeListener("accountsChanged", handleAccountsChanged);
-      };
-    }
-  }, [signer]);
+    const loadAccounts = async () => {
+        if (!window.ethereum) return;
 
-  const loadAccountInfo = async () => {
-    if (!signer) return;
+        try {
+            const provider = new ethers.BrowserProvider(window.ethereum);
+            const accounts = await provider.listAccounts();
 
-    try {
-      const address = await signer.getAddress();
-      const balance = await signer.provider.getBalance(address);
+            const accountsWithInfo = await Promise.all(
+                accounts.map(async (account) => {
+                    const balance = await provider.getBalance(account.address);
 
-      setCurrentAccount({
-        address: address,
-        balance: ethers.formatEther(balance)
-      });
-    } catch (err) {
-      console.error('Error loading account info:', err);
-    }
-  };
+                    return {
+                        address: account.address,
+                        balance: ethers.formatEther(balance).substring(0, 6) + " ETH"
+                    };
+                })
+            );
 
-  const formatAddress = (address: string) => {
-    return `${address.slice(0, 6)}...${address.slice(-4)}`;
-  };
+            setAccounts(accountsWithInfo);
+        } catch (error) {
+            console.error("Failed to load accounts:", error);
+        }
+    };
 
-  const formatBalance = (balance: string) => {
-    return `${parseFloat(balance).toFixed(4)} ETH`;
-  };
+    const connectWallet = async () => {
+        if (!window.ethereum) {
+            alert("MetaMask is not installed. Please install it to use this feature.");
+            return;
+        }
 
-  if (loading) {
+        try {
+            // Request account access
+            const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
+            if (accounts.length > 0) {
+                setCurrentAccount(accounts[0]);
+                setIsConnected(true);
+                loadAccounts();
+            }
+        } catch (error) {
+            console.error("User denied account access:", error);
+        }
+    };
+
+    const switchAccount = async () => {
+        try {
+            await window.ethereum.request({
+                method: "wallet_requestPermissions",
+                params: [{ eth_accounts: {} }],
+            });
+            loadAccounts();
+        } catch (error) {
+            console.error("Failed to switch account:", error);
+        }
+    };
+
+    const disconnectWallet = async () => {
+        setIsConnected(false);
+        setCurrentAccount(null);
+        setAccounts([]);
+        console.log("Wallet disconnected");
+    };
+
+    const formatAddress = (address: string): string => {
+        return `${address.substring(0, 6)}...${address.substring(address.length - 4)}`;
+    };
+
     return (
-      <div className="account-switcher">
-        <div className="connect-container">
-          <button className="connect-btn" disabled>
-            🔄 Connecting...
-          </button>
+        <div className="account-switcher">
+            {isConnected && currentAccount ? (
+                <div className="connected-container">
+                    <div className="current-account">
+                        <div className="account-indicator">
+                            <div className="status-dot connected"></div>
+                            <span className="status-text">Connected</span>
+                        </div>
+                        <div className="account-address">
+                            {formatAddress(currentAccount)}
+                        </div>
+                        {accounts.find(acc => acc.address === currentAccount)?.balance && (
+                            <div className="account-balance">
+                                {accounts.find(acc => acc.address === currentAccount)?.balance}
+                            </div>
+                        )}
+                    </div>
+                    <div className="account-actions">
+                        <button className="switch-btn" onClick={switchAccount}>
+                            🔄 Switch
+                        </button>
+                        <button className="disconnect-btn" onClick={disconnectWallet}>
+                            🚪 Disconnect
+                        </button>
+                    </div>
+                </div>
+            ) : (
+                <div className="connect-container">
+                    <button className="connect-btn" onClick={connectWallet}>
+                        🦊 Connect Wallet
+                    </button>
+                </div>
+            )}
         </div>
-      </div>
     );
-  }
-
-  if (!isConnected) {
-    return (
-      <div className="account-switcher">
-        <div className="connect-container">
-          <button className="connect-btn" onClick={connectWallet}>
-            🦊 Connect Wallet
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="account-switcher">
-      <div className="connected-container">
-        <div className="current-account">
-          <div className="account-indicator">
-            <div className="status-dot connected"></div>
-            <span className="status-text">Connected</span>
-          </div>
-          <div className="account-address">
-            {currentAccount ? formatAddress(currentAccount.address) : 'Loading...'}
-          </div>
-          {currentAccount?.balance && (
-            <div className="account-balance">
-              {formatBalance(currentAccount.balance)}
-            </div>
-          )}
-        </div>
-        <div className="account-actions">
-          <button className="disconnect-btn" onClick={disconnectWallet}>
-            🚪 Disconnect
-          </button>
-        </div>
-      </div>
-    </div>
-  );
 };
 
 export default AccountSwitcher;

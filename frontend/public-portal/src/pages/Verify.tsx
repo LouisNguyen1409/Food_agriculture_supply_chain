@@ -1,127 +1,154 @@
 import React, { useState } from 'react';
 import { useContracts } from '../hooks/useContracts';
+import { ethers } from 'ethers';
+import '../styles/Verify.css';
 
 interface VerificationResult {
-  isAuthentic: boolean;
-  productInfo?: {
-    productName: string;
-    origin: string;
-    productionDate: Date;
-    currentLocation: string;
-    farmerInfo: string;
-    supplyChainSteps: number;
-    qualityGrade: string;
-    isOrganic: boolean;
-  };
-  consumerSummary?: {
-    isAuthentic: boolean;
-    productName: string;
-    farmOrigin: string;
-    harvestDate: Date;
-    currentStatus: string;
-    daysFromHarvest: number;
-    totalSteps: number;
-    qualityIndicator: string;
-  };
-  error?: string;
+  isValid: boolean;
+  productName: string;
+  origin: string;
+  batchId: number;
+  currentOwner: string;
+  farmer: string;
+  productionDate: Date;
+  lastLocation: string;
+  provenanceRecords: number;
+}
+
+interface SupplyChainStep {
+  stakeholder: string;
+  stakeholderRole: string;
+  action: string;
+  location: string;
+  timestamp: Date;
+  price: string;
 }
 
 const Verify: React.FC = () => {
-  const { contracts, loading, error } = useContracts();
-  const [qrCode, setQrCode] = useState('');
+  const { contracts, loading, error, isConnected, connectContracts } = useContracts();
+  const [qrCode, setQrCode] = useState<string>('');
   const [verificationResult, setVerificationResult] = useState<VerificationResult | null>(null);
-  const [isVerifying, setIsVerifying] = useState(false);
+  const [supplyChainSteps, setSupplyChainSteps] = useState<SupplyChainStep[]>([]);
+  const [verifying, setVerifying] = useState(false);
+  const [showSupplyChain, setShowSupplyChain] = useState(false);
 
   const verifyProduct = async () => {
-    if (!qrCode.trim()) {
-      alert('Please enter a QR code');
+    if (!contracts?.publicVerification || !qrCode.trim()) {
+      alert('Please enter a QR code and ensure contracts are connected');
       return;
     }
 
-    if (!contracts || !contracts.publicVerification) {
-      alert('Verification system not connected. Please check your connection.');
-      return;
-    }
-
-    setIsVerifying(true);
+    setVerifying(true);
     try {
-      console.log('Verifying QR Code:', qrCode);
+      console.log('🔍 Verifying QR code:', qrCode);
 
-      // Step 1: Quick verify to check if QR code is valid
-      const quickResult = await contracts.publicVerification.quickVerify(qrCode);
-      const [isQuickValid, productName, origin] = quickResult;
-
-      if (!isQuickValid) {
-        setVerificationResult({
-          isAuthentic: false,
-          error: 'Invalid QR code or product not found in our system'
-        });
-        setIsVerifying(false);
-        return;
-      }
-
-      // Step 2: Get detailed verification if quick verify passed
-      const detailedResult = await contracts.publicVerification.verifyProduct.staticCall(qrCode);
-      const [productInfo, isValid] = detailedResult;
+      // Verify the product
+      const result = await contracts.publicVerification.verifyProduct(qrCode);
+      const [productInfo, isValid] = result;
 
       if (isValid) {
-        // Step 3: Get consumer-friendly summary
-        const consumerSummary = await contracts.publicVerification.getConsumerSummary(qrCode);
+        const verificationData: VerificationResult = {
+          isValid: true,
+          productName: productInfo.productName,
+          origin: productInfo.origin,
+          batchId: Number(productInfo.batchId || 0),
+          currentOwner: productInfo.currentLocation || 'Unknown',
+          farmer: productInfo.farmerInfo || 'Unknown',
+          productionDate: new Date(Number(productInfo.productionDate || 0) * 1000),
+          lastLocation: productInfo.currentLocation || productInfo.origin,
+          provenanceRecords: Number(productInfo.supplyChainSteps || 0)
+        };
 
-        setVerificationResult({
-          isAuthentic: true,
-          productInfo: {
-            productName: productInfo.productName,
-            origin: productInfo.origin,
-            productionDate: new Date(Number(productInfo.productionDate) * 1000),
-            currentLocation: productInfo.currentLocation,
-            farmerInfo: productInfo.farmerInfo,
-            supplyChainSteps: Number(productInfo.supplyChainSteps),
-            qualityGrade: productInfo.qualityGrade,
-            isOrganic: productInfo.isOrganic
-          },
-          consumerSummary: {
-            isAuthentic: consumerSummary.isAuthentic,
-            productName: consumerSummary.productName,
-            farmOrigin: consumerSummary.farmOrigin,
-            harvestDate: new Date(Number(consumerSummary.harvestDate) * 1000),
-            currentStatus: consumerSummary.currentStatus,
-            daysFromHarvest: Number(consumerSummary.daysFromHarvest),
-            totalSteps: Number(consumerSummary.totalSteps),
-            qualityIndicator: consumerSummary.qualityIndicator
-          }
-        });
+        setVerificationResult(verificationData);
 
-        // Step 4: Record the verification (actual transaction)
-        await contracts.publicVerification.verifyProduct(qrCode);
+        // Load supply chain history if batchId is available
+        if (verificationData.batchId > 0) {
+          await loadSupplyChainHistory(verificationData.batchId);
+        }
 
+        console.log('✅ Product verified successfully');
       } else {
         setVerificationResult({
-          isAuthentic: false,
-          error: 'Product verification failed - this product may not be authentic'
+          isValid: false,
+          productName: 'Unknown',
+          origin: 'Unknown',
+          batchId: 0,
+          currentOwner: 'Unknown',
+          farmer: 'Unknown',
+          productionDate: new Date(),
+          lastLocation: 'Unknown',
+          provenanceRecords: 0
         });
+        setSupplyChainSteps([]);
       }
+
     } catch (err: any) {
-      console.error('Verification error:', err);
-      setVerificationResult({
-        isAuthentic: false,
-        error: err.message || 'Verification failed. Please try again.'
-      });
+      console.error('❌ Verification error:', err);
+      alert('Verification failed: ' + (err.message || 'Unknown error'));
+      setVerificationResult(null);
+      setSupplyChainSteps([]);
     }
-    setIsVerifying(false);
+    setVerifying(false);
   };
 
-  const resetVerification = () => {
-    setVerificationResult(null);
-    setQrCode('');
+  const loadSupplyChainHistory = async (batchId: number) => {
+    if (!contracts?.transactionRegistry) {
+      console.log('⚠️ Transaction registry not available - supply chain history disabled');
+      return;
+    }
+
+    try {
+      console.log('📋 Loading supply chain history for batch:', batchId);
+
+      const steps = await contracts.transactionRegistry.getSupplyChainHistory(batchId);
+
+      const processedSteps: SupplyChainStep[] = steps.map((step: any) => ({
+        stakeholder: step.stakeholder,
+        stakeholderRole: step.stakeholderRole,
+        action: step.action,
+        location: step.location || 'Location not specified',
+        timestamp: new Date(Number(step.timestamp) * 1000),
+        price: ethers.formatEther(step.price)
+      }));
+
+      setSupplyChainSteps(processedSteps);
+      console.log('✅ Supply chain history loaded:', processedSteps.length, 'steps');
+
+    } catch (err: any) {
+      console.error('❌ Error loading supply chain history:', err);
+      setSupplyChainSteps([]);
+    }
   };
+
+  const getActionIcon = (action: string): string => {
+    if (action.includes('SPOT')) return '🌱';
+    if (action.includes('PROCESSOR_SALE')) return '🏭';
+    if (action.includes('DISTRIBUTOR_SALE')) return '🚛';
+    if (action.includes('RETAILER_SALE')) return '🏪';
+    if (action.includes('CONSUMER_PURCHASE')) return '🛒';
+    return '📦';
+  };
+
+  if (!isConnected) {
+    return (
+      <div className="page-container">
+        <div className="connection-required">
+          <h3>🦊 Wallet Connection Required</h3>
+          <p>Please connect your wallet to verify products.</p>
+          <button onClick={connectContracts} className="btn-primary">
+            🔗 Connect Contracts
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
       <div className="page-container">
         <div className="loading-container">
           <div className="loader"></div>
-          <p>Connecting to blockchain verification system...</p>
+          <p>Connecting to blockchain...</p>
         </div>
       </div>
     );
@@ -133,12 +160,9 @@ const Verify: React.FC = () => {
         <div className="error-container">
           <h3>⚠️ Connection Error</h3>
           <p>{error}</p>
-          <p>Please ensure:</p>
-          <ul>
-            <li>MetaMask is installed and connected</li>
-            <li>You're connected to the correct network</li>
-            <li>Verification contracts are deployed</li>
-          </ul>
+          <button onClick={connectContracts} className="btn-primary">
+            🔄 Retry Connection
+          </button>
         </div>
       </div>
     );
@@ -146,163 +170,134 @@ const Verify: React.FC = () => {
 
   return (
     <div className="page-container">
-      <div className="page-header">
-        <h1>🔍 Verify Product Authenticity</h1>
-        <p>Enter a QR code to verify product authenticity on the blockchain</p>
-      </div>
+      <div className="verify-container">
+        <div className="verify-header">
+          <h2>🔍 Verify Product Authenticity</h2>
+          <p>Scan or enter the QR code to verify your product</p>
+        </div>
 
-      {!verificationResult && (
         <div className="verification-form">
-          <div className="form-group">
-            <label htmlFor="qr-input">QR Code:</label>
-            <div className="input-with-button">
-              <input
-                id="qr-input"
-                type="text"
-                className="form-control"
-                placeholder="Enter QR code (e.g., QR-abc123)"
-                value={qrCode}
-                onChange={(e) => setQrCode(e.target.value)}
-              />
-              <button
-                onClick={verifyProduct}
-                className="btn-primary"
-                disabled={!qrCode.trim() || isVerifying}
-              >
-                {isVerifying ? '🔄 Verifying...' : 'Verify Product'}
-              </button>
-            </div>
+          <div className="input-group">
+            <label htmlFor="qrCode">QR Code:</label>
+            <input
+              id="qrCode"
+              type="text"
+              value={qrCode}
+              onChange={(e) => setQrCode(e.target.value)}
+              placeholder="Enter QR code (e.g., QR-abc123...)"
+              className="qr-input"
+            />
           </div>
 
-          <div className="help-text">
-            <p>💡 QR codes are usually found on product packaging and start with "QR-"</p>
-            <p>📱 You can also scan QR codes using your phone camera</p>
-          </div>
+          <button
+            onClick={verifyProduct}
+            disabled={verifying || !qrCode.trim()}
+            className="verify-btn"
+          >
+            {verifying ? '🔍 Verifying...' : '✅ Verify Product'}
+          </button>
         </div>
-      )}
 
-      {isVerifying && (
-        <div className="verification-status">
-          <div className="loading-container">
-            <div className="loader"></div>
-            <p>🔄 Verifying product on blockchain...</p>
-            <small>This may take a few seconds...</small>
-          </div>
-        </div>
-      )}
+        {verificationResult && (
+          <div className={`verification-result ${verificationResult.isValid ? 'valid' : 'invalid'}`}>
+            {verificationResult.isValid ? (
+              <div className="result-content">
+                <div className="result-header">
+                  <h3>✅ Product Verified!</h3>
+                  <span className="verified-badge">AUTHENTIC</span>
+                </div>
 
-      {verificationResult && (
-        <div className={`verification-result ${verificationResult.isAuthentic ? 'authentic' : 'not-authentic'}`}>
-          {verificationResult.isAuthentic ? (
-            <div className="authentic-result">
-              <div className="result-header">
-                <h2>✅ Product Verified Authentic!</h2>
-                <p>This product has been verified on the blockchain</p>
-              </div>
-
-              <div className="product-details">
-                <h3>📦 Product Information</h3>
-                <div className="detail-grid">
-                  <div className="detail-item">
-                    <span className="label">Product:</span>
-                    <span className="value">{verificationResult.productInfo?.productName}</span>
+                <div className="product-details">
+                  <div className="detail-row">
+                    <span className="label">📦 Product:</span>
+                    <span className="value">{verificationResult.productName}</span>
                   </div>
-                  <div className="detail-item">
-                    <span className="label">Origin:</span>
-                    <span className="value">{verificationResult.productInfo?.origin}</span>
+                  <div className="detail-row">
+                    <span className="label">🌍 Origin:</span>
+                    <span className="value">{verificationResult.origin}</span>
                   </div>
-                  <div className="detail-item">
-                    <span className="label">Production Date:</span>
-                    <span className="value">{verificationResult.productInfo?.productionDate.toLocaleDateString()}</span>
+                  <div className="detail-row">
+                    <span className="label">👨‍🌾 Farmer:</span>
+                    <span className="value">
+                      {verificationResult.farmer.length > 10
+                        ? `${verificationResult.farmer.slice(0,6)}...${verificationResult.farmer.slice(-4)}`
+                        : verificationResult.farmer
+                      }
+                    </span>
                   </div>
-                  <div className="detail-item">
-                    <span className="label">Current Location:</span>
-                    <span className="value">{verificationResult.productInfo?.currentLocation}</span>
+                  <div className="detail-row">
+                    <span className="label">📅 Production Date:</span>
+                    <span className="value">{verificationResult.productionDate.toLocaleDateString()}</span>
                   </div>
-                  <div className="detail-item">
-                    <span className="label">Farmer:</span>
-                    <span className="value">{verificationResult.productInfo?.farmerInfo}</span>
+                  <div className="detail-row">
+                    <span className="label">📍 Current Location:</span>
+                    <span className="value">{verificationResult.lastLocation}</span>
                   </div>
-                  <div className="detail-item">
-                    <span className="label">Quality Grade:</span>
-                    <span className="value">{verificationResult.productInfo?.qualityGrade}</span>
-                  </div>
-                  <div className="detail-item">
-                    <span className="label">Organic:</span>
-                    <span className="value">{verificationResult.productInfo?.isOrganic ? 'Yes ✓' : 'No'}</span>
-                  </div>
-                  <div className="detail-item">
-                    <span className="label">Supply Chain Steps:</span>
-                    <span className="value">{verificationResult.productInfo?.supplyChainSteps}</span>
+                  <div className="detail-row">
+                    <span className="label">🆔 Batch ID:</span>
+                    <span className="value">#{verificationResult.batchId}</span>
                   </div>
                 </div>
 
-                {verificationResult.consumerSummary && (
-                  <div className="consumer-summary">
-                    <h3>📊 Consumer Summary</h3>
-                    <div className="summary-grid">
-                      <div className="summary-item">
-                        <span className="label">Farm Origin:</span>
-                        <span className="value">{verificationResult.consumerSummary.farmOrigin}</span>
-                      </div>
-                      <div className="summary-item">
-                        <span className="label">Harvest Date:</span>
-                        <span className="value">{verificationResult.consumerSummary.harvestDate.toLocaleDateString()}</span>
-                      </div>
-                      <div className="summary-item">
-                        <span className="label">Current Status:</span>
-                        <span className="value">{verificationResult.consumerSummary.currentStatus}</span>
-                      </div>
-                      <div className="summary-item">
-                        <span className="label">Days from Harvest:</span>
-                        <span className="value">{verificationResult.consumerSummary.daysFromHarvest} days</span>
-                      </div>
-                      <div className="summary-item">
-                        <span className="label">Quality Indicator:</span>
-                        <span className="value">{verificationResult.consumerSummary.qualityIndicator}</span>
-                      </div>
-                      <div className="summary-item">
-                        <span className="label">Total Supply Chain Steps:</span>
-                        <span className="value">{verificationResult.consumerSummary.totalSteps}</span>
-                      </div>
+                {/* Supply Chain Section */}
+                {supplyChainSteps.length > 0 && (
+                  <div className="supply-chain-section">
+                    <div className="section-header">
+                      <h4>📋 Supply Chain Journey</h4>
+                      <button
+                        onClick={() => setShowSupplyChain(!showSupplyChain)}
+                        className="toggle-btn"
+                      >
+                        {showSupplyChain ? '🔼 Hide' : '🔽 Show'} ({supplyChainSteps.length} steps)
+                      </button>
                     </div>
+
+                    {showSupplyChain && (
+                      <div className="supply-chain-steps">
+                        {supplyChainSteps.map((step, index) => (
+                          <div key={index} className="chain-step">
+                            <div className="step-icon">
+                              {getActionIcon(step.action)}
+                            </div>
+                            <div className="step-content">
+                              <div className="step-header">
+                                <h5>{step.stakeholderRole}</h5>
+                                <span className="step-time">
+                                  {step.timestamp.toLocaleDateString()}
+                                </span>
+                              </div>
+                              <div className="step-details">
+                                <p className="action">{step.action}</p>
+                                <div className="step-info">
+                                  <span className="location">📍 {step.location}</span>
+                                  <span className="price">💰 {step.price} ETH</span>
+                                  <span className="address">
+                                    👤 {step.stakeholder.slice(0,6)}...{step.stakeholder.slice(-4)}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
-              </div>
 
-              <div className="actions">
-                <button onClick={resetVerification} className="btn-primary">
-                  🔍 Verify Another Product
-                </button>
               </div>
-            </div>
-          ) : (
-            <div className="invalid-result">
-              <div className="result-header">
-                <h2>❌ Verification Failed</h2>
-                <p>This product could not be verified</p>
-              </div>
-              <div className="error-details">
-                <p><strong>Error:</strong> {verificationResult.error}</p>
-                <div className="warning-info">
-                  <h4>⚠️ This might mean:</h4>
-                  <ul>
-                    <li>The QR code is invalid or damaged</li>
-                    <li>The product is not registered in our system</li>
-                    <li>The QR code is from a different verification system</li>
-                    <li>The product may be counterfeit</li>
-                  </ul>
+            ) : (
+              <div className="result-content">
+                <div className="result-header">
+                  <h3>❌ Product Not Verified</h3>
+                  <span className="invalid-badge">INVALID</span>
                 </div>
+                <p>This QR code is not valid or the product cannot be verified.</p>
+                <p>Please check the QR code and try again.</p>
               </div>
-              <div className="actions">
-                <button onClick={resetVerification} className="btn-primary">
-                  🔄 Try Again
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 };

@@ -1,4 +1,5 @@
 {
+<<<<<<< HEAD
   "StakeholderManager": "0xc3e53F4d16Ae77Db1c982e75a937B9f60FE63690",
   "ProductBatch": "0x9E545E3C0baAB3E08CdfD552C960A1050f373042",
   "OfferManager": "0xa82fF9aFd8f496c3d6ac40E2a0F282E47488CFc9",
@@ -8,6 +9,17 @@
   "ProvenanceTracker": "0x95401dc811bb5740090279Ba06cfA8fcF6113778",
   "QRCodeVerifier": "0x998abeb3E57409262aE5b751f60747921B33613E",
   "PublicVerification": "0x70e0bA845a1A0F2DA3359C97E0285013525FFC49",
+=======
+  "StakeholderManager": "0x8A791620dd6260079BF849Dc5567aDC3F2FdC318",
+  "ProductBatch": "0xB7f8BC63BbcaD18155201308C8f3540b07f84F5e",
+  "OfferManager": "0xA51c1fc2f0D1a1b8494Ed1FE312d7C3a78Ed91C0",
+  "Registry": "0x0DCd1Bf9A1b36cE34237eEaFef220932846BCD82",
+  "ShipmentTracker": "0x9A676e781A523b5d0C0e43731313A708CB607508",
+  "StakeholderRegistry": "0x0B306BF915C4d645ff596e518fAf3F9669b97016",
+  "ProvenanceTracker": "0x959922bE3CAee4b8Cd9a407cc3ac1C251C2007B1",
+  "QRCodeVerifier": "0x9A9f2CCfdE556A7E9Ff0848998Aa4a0CFD8863AE",
+  "PublicVerification": "0x68B1D87F95878fE05B998F19b66F4baba5De1aed",
+>>>>>>> 5b8304f862275f0b404ec89cd17af340ba7be116
   "chainId": 31337,
   "network": "localhost"
 }

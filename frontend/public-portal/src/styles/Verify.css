@@ -1,0 +1,147 @@
+/* Add these styles to your existing Verify.css */
+
+.supply-chain-section {
+    margin-top: 24px;
+    padding: 20px;
+    background: #f8fafc;
+    border-radius: 12px;
+    border: 1px solid #e5e7eb;
+  }
+
+  .section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+  }
+
+  .section-header h4 {
+    margin: 0;
+    color: #1f2937;
+    font-size: 18px;
+  }
+
+  .toggle-btn {
+    background: #3b82f6;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background 0.2s;
+  }
+
+  .toggle-btn:hover {
+    background: #2563eb;
+  }
+
+  .supply-chain-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .chain-step {
+    display: flex;
+    align-items: flex-start;
+    background: white;
+    padding: 16px;
+    border-radius: 12px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    border-left: 4px solid #3b82f6;
+  }
+
+  .step-icon {
+    font-size: 24px;
+    margin-right: 16px;
+    background: #f3f4f6;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .step-content {
+    flex: 1;
+  }
+
+  .step-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+
+  .step-header h5 {
+    margin: 0;
+    color: #1f2937;
+    font-size: 16px;
+    font-weight: 600;
+  }
+
+  .step-time {
+    font-size: 12px;
+    color: #6b7280;
+    background: #f3f4f6;
+    padding: 4px 8px;
+    border-radius: 12px;
+  }
+
+  .step-details .action {
+    font-weight: 500;
+    color: #374151;
+    margin-bottom: 8px;
+    font-size: 14px;
+  }
+
+  .step-info {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    font-size: 12px;
+    color: #6b7280;
+  }
+
+  .step-info span {
+    background: #f9fafb;
+    padding: 4px 8px;
+    border-radius: 6px;
+  }
+
+  .location {
+    color: #059669 !important;
+  }
+
+  .price {
+    color: #dc2626 !important;
+  }
+
+  .address {
+    color: #7c3aed !important;
+  }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    .chain-step {
+      flex-direction: column;
+      text-align: center;
+    }
+
+    .step-icon {
+      margin: 0 auto 12px auto;
+    }
+
+    .step-header {
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .step-info {
+      justify-content: center;
+    }
+  }

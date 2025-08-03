@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useContracts } from '../hooks/useContracts';
 import { ethers } from 'ethers';
 
@@ -10,40 +10,109 @@ interface Product {
   quantity: number;
   origin: string;
   retailer: string;
+  retailerAddress: string;
   available: boolean;
 }
 
+// Add proper typing for contract response
+interface RetailerProductsResponse {
+  0: ethers.BigNumberish[]; // batchIds
+  1: string[];              // retailers
+  2: string[];              // productNames
+  3: string[];              // descriptions
+  4: ethers.BigNumberish[]; // prices
+  5: ethers.BigNumberish[]; // quantities
+  6: string[];              // origins
+}
+
 const ProductMarketplace: React.FC = () => {
-  const { contracts, signer, loading, error } = useContracts();
+  const { contracts, signer, loading, error, isConnected } = useContracts();
   const [products, setProducts] = useState<Product[]>([]);
   const [purchaseStatus, setPurchaseStatus] = useState<{[key: number]: string}>({});
   const [loadingProducts, setLoadingProducts] = useState(false);
 
-  useEffect(() => {
-    if (contracts && contracts.productBatch) {
-      loadAvailableProducts();
+  const loadAvailableProducts = useCallback(async () => {
+    if (!contracts?.productBatch) {
+      console.log('ProductBatch contract not available');
+      setProducts([]);
+      return;
     }
-  }, [contracts]);
 
-  const loadAvailableProducts = async () => {
     setLoadingProducts(true);
     try {
-      if (!contracts?.productBatch) {
-        console.log('ProductBatch contract not available');
-        setProducts([]);
-        return;
+      console.log('🔍 Loading retailer products from blockchain...');
+
+      // Use the new getRetailerProducts function with proper typing
+      const result: RetailerProductsResponse = await contracts.productBatch.getRetailerProducts();
+
+      const batchIds = result[0];
+      const retailers = result[1];
+      const productNames = result[2];
+      const descriptions = result[3];
+      const prices = result[4];
+      const quantities = result[5];
+      const origins = result[6];
+
+      console.log('📦 Raw retailer products data:', {
+        batchIds: batchIds.map((id: ethers.BigNumberish) => Number(id)),
+        retailers,
+        productNames,
+        quantities: quantities.map((q: ethers.BigNumberish) => Number(q))
+      });
+
+      const availableProducts: Product[] = [];
+
+      for (let i = 0; i < batchIds.length; i++) {
+        const quantity = Number(quantities[i]);
+        if (quantity > 0) {
+          availableProducts.push({
+            batchId: Number(batchIds[i]),
+            name: productNames[i],
+            description: descriptions[i] || `Premium quality ${productNames[i]} from ${origins[i]}`,
+            price: ethers.formatEther(prices[i]),
+            quantity: quantity,
+            origin: origins[i],
+            retailer: `🏪 ${retailers[i].slice(0,6)}...${retailers[i].slice(-4)}`,
+            retailerAddress: retailers[i],
+            available: true
+          });
+        }
       }
 
-      console.log('🔍 Loading products from blockchain...');
+      console.log(`✅ Loaded ${availableProducts.length} retailer products`);
+      setProducts(availableProducts);
+
+    } catch (err: unknown) {
+      const error = err as Error;
+      console.error('❌ Error loading retailer products:', error);
+
+      // Check if the function exists, if not fallback to legacy method
+      if (error.message?.includes('getRetailerProducts') ||
+          error.message?.includes('not a function')) {
+        console.log('🔄 getRetailerProducts not available, using fallback method...');
+        await loadProductsLegacy();
+      } else {
+        setProducts([]);
+      }
+    }
+    setLoadingProducts(false);
+  }, [contracts]);
+
+  // Fallback method with proper typing
+  const loadProductsLegacy = async () => {
+    try {
+      console.log('🔄 Using legacy product loading method...');
       const availableProducts: Product[] = [];
 
       // Try loading batches 1-20 (adjust range as needed)
       for (let batchId = 1; batchId <= 20; batchId++) {
         try {
-          const batchExists = await contracts.productBatch.batchExists(batchId);
+          const batchExists: boolean = await contracts!.productBatch!.batchExists(batchId);
           if (!batchExists) continue;
 
-          const batchInfo = await contracts.productBatch.getBatchInfo(batchId);
+          const batchInfo: [string, string, string, string, ethers.BigNumberish, ethers.BigNumberish, string, number, ethers.BigNumberish, boolean] =
+            await contracts!.productBatch!.getBatchInfo(batchId);
+
           const [
             farmer,
             retailer,
@@ -57,7 +126,8 @@ const ProductMarketplace: React.FC = () => {
             isActive
           ] = batchInfo;
 
-          if (isActive && quantity > 0) {
+          // Only show products owned by retailers (not farmers directly)
+          if (isActive && Number(quantity) > 0 && retailer !== ethers.ZeroAddress) {
             availableProducts.push({
               batchId,
               name: productName,
@@ -65,31 +135,38 @@ const ProductMarketplace: React.FC = () => {
               price: ethers.formatEther(price),
               quantity: Number(quantity),
               origin: origin,
-              retailer: retailer === ethers.ZeroAddress ? "Direct from Farm" : `Retailer: ${retailer.slice(0,6)}...`,
+              retailer: `🏪 ${retailer.slice(0,6)}...${retailer.slice(-4)}`,
+              retailerAddress: retailer,
               available: true
             });
           }
-        } catch (error: any) {
-            // Batch doesn't exist or error loading, continue
-            if (error?.message?.includes("Batch does not exist")) {
-              break; // No more batches
-            }
+        } catch (error: unknown) {
+          const err = error as Error;
+          if (err.message?.includes("Batch does not exist")) {
+            break; // No more batches
+          }
         }
       }
 
-      console.log(`✅ Loaded ${availableProducts.length} available products`);
+      console.log(`✅ Loaded ${availableProducts.length} products (legacy method)`);
       setProducts(availableProducts);
 
-    } catch (err) {
-      console.error('❌ Error loading products:', err);
+    } catch (err: unknown) {
+      const error = err as Error;
+      console.error('❌ Error in legacy product loading:', error);
       setProducts([]);
     }
-    setLoadingProducts(false);
   };
 
+  useEffect(() => {
+    if (isConnected && contracts?.productBatch) {
+      loadAvailableProducts();
+    }
+  }, [isConnected, contracts, loadAvailableProducts]);
+
   const purchaseProduct = async (product: Product) => {
-    if (!contracts || !contracts.productBatch || !signer) {
-      alert('Contracts not loaded or wallet not connected');
+    if (!contracts?.productBatch || !signer) {
+      alert('Please connect your wallet first');
       return;
     }
 
@@ -104,34 +181,98 @@ const ProductMarketplace: React.FC = () => {
 
       const quantity = 1;
       const priceInWei = ethers.parseEther((parseFloat(product.price) * quantity).toString());
-      const retailerAddress = await signer.getAddress();
 
-      const tx = await contracts.productBatch.purchaseWithImmediateOwnership(
+      // Use the customer's address as the consumer
+      const consumerAddress: string = await signer.getAddress();
+
+      console.log('🛒 Purchasing product:', {
+        batchId: product.batchId,
+        retailer: product.retailerAddress,
+        consumer: consumerAddress,
+        quantity,
+        price: product.price,
+        deliveryAddress
+      });
+
+      const tx: ethers.ContractTransactionResponse = await contracts.productBatch.purchaseWithImmediateOwnership(
         product.batchId,
-        retailerAddress,
+        product.retailerAddress,
         quantity,
         deliveryAddress,
         { value: priceInWei }
       );
 
+      console.log('📝 Transaction sent:', tx.hash);
       await tx.wait();
+
+      // Step 2: Record the transaction in registry (if available)
+    try {
+        if (contracts.transactionRegistry) {
+          console.log('📋 Recording transaction in registry...');
+
+          const recordTx = await contracts.transactionRegistry.recordTransaction(
+            product.batchId,           // batchId
+            product.retailerAddress,   // seller (retailer)
+            consumerAddress,          // buyer (consumer)
+            ethers.parseEther(product.price), // unit price
+            quantity,                 // quantity
+            "CONSUMER_PURCHASE"       // transaction type
+          );
+
+          console.log('📋 Transaction registry record sent:', recordTx.hash);
+          await recordTx.wait();
+          console.log('✅ Transaction recorded in registry');
+        } else {
+          console.log('⚠️ Transaction registry not available');
+        }
+      } catch (registryError) {
+        console.error('⚠️ Failed to record transaction in registry:', registryError);
+        // Don't fail the whole purchase if registry recording fails
+      }
       setPurchaseStatus(prev => ({ ...prev, [product.batchId]: 'success' }));
 
-      alert(`🎉 Purchase Successful! You now own this product.`);
+      alert(`🎉 Purchase Successful!
 
+Transaction Hash: ${tx.hash}
+Product: ${product.name}
+Retailer: ${product.retailer}
+Delivery Address: ${deliveryAddress}
+
+You now own this product!`);
+
+      // Update product quantity locally
       setProducts(prev => prev.map(p =>
         p.batchId === product.batchId
           ? { ...p, quantity: p.quantity - quantity, available: p.quantity > quantity }
           : p
       ));
 
-    } catch (err: any) {
-      console.error('Purchase error:', err);
+      // Refresh products after successful purchase
+      setTimeout(() => {
+        loadAvailableProducts();
+      }, 2000);
+
+    } catch (err: unknown) {
+      const error = err as Error;
+      console.error('❌ Purchase error:', error);
       setPurchaseStatus(prev => ({ ...prev, [product.batchId]: 'error' }));
-      alert('Purchase failed: ' + err.message);
+
+      let errorMessage = 'Purchase failed: ';
+      if (error.message?.includes('insufficient funds')) {
+        errorMessage += 'Insufficient funds in your wallet';
+      } else if (error.message?.includes('user rejected')) {
+        errorMessage += 'Transaction cancelled by user';
+      } else if (error.message?.includes('execution reverted')) {
+        errorMessage += 'Transaction failed - check if product is still available';
+      } else {
+        errorMessage += error.message || 'Unknown error';
+      }
+
+      alert(errorMessage);
     }
   };
 
+  // Rest of your component remains the same...
   if (loading) {
     return (
       <div className="loading-container">
@@ -146,6 +287,18 @@ const ProductMarketplace: React.FC = () => {
       <div className="error-container">
         <h3>⚠️ Connection Error</h3>
         <p>{error}</p>
+        <button onClick={loadAvailableProducts} className="retry-btn">
+          🔄 Retry
+        </button>
+      </div>
+    );
+  }
+
+  if (!isConnected) {
+    return (
+      <div className="connection-required">
+        <h3>🦊 Wallet Connection Required</h3>
+        <p>Please connect your wallet to view and purchase products.</p>
       </div>
     );
   }
@@ -153,15 +306,21 @@ const ProductMarketplace: React.FC = () => {
   return (
     <div className="marketplace-container">
       <div className="marketplace-header">
-        <h2>🛒 Available Products</h2>
-        <button onClick={loadAvailableProducts} className="refresh-btn">
-          🔄 Refresh
-        </button>
+        <h2>🛒 Retailer Products</h2>
+        <div className="header-actions">
+          <span className="product-count">
+            {products.length} products available
+          </span>
+          <button onClick={loadAvailableProducts} className="refresh-btn">
+            🔄 Refresh
+          </button>
+        </div>
       </div>
 
       {loadingProducts ? (
         <div className="loading-container">
-          <p>Loading products...</p>
+          <div className="loader"></div>
+          <p>Loading products from retailers...</p>
         </div>
       ) : (
         <div className="products-grid">
@@ -169,7 +328,10 @@ const ProductMarketplace: React.FC = () => {
             <div key={product.batchId} className="product-card">
               <div className="product-header">
                 <h3>{product.name}</h3>
-                <span className="badge verified">✅ Verified</span>
+                <div className="badges">
+                  <span className="badge verified">✅ Verified</span>
+                  <span className="badge retailer">🏪 Retailer</span>
+                </div>
               </div>
 
               <div className="product-details">
@@ -179,12 +341,20 @@ const ProductMarketplace: React.FC = () => {
                   <span className="value">{product.origin}</span>
                 </div>
                 <div className="detail-row">
+                  <span className="label">🏪 Retailer:</span>
+                  <span className="value">{product.retailer}</span>
+                </div>
+                <div className="detail-row">
                   <span className="label">💰 Price:</span>
                   <span className="value">{product.price} ETH</span>
                 </div>
                 <div className="detail-row">
                   <span className="label">📦 Available:</span>
                   <span className="value">{product.quantity} units</span>
+                </div>
+                <div className="detail-row">
+                  <span className="label">🆔 Batch ID:</span>
+                  <span className="value">#{product.batchId}</span>
                 </div>
               </div>
 
@@ -196,7 +366,7 @@ const ProductMarketplace: React.FC = () => {
                     className="purchase-btn"
                   >
                     {purchaseStatus[product.batchId] === 'purchasing' ? (
-                      'Purchasing...'
+                      '⏳ Purchasing...'
                     ) : (
                       `🛒 Buy Now - ${product.price} ETH`
                     )}
@@ -226,8 +396,12 @@ const ProductMarketplace: React.FC = () => {
 
       {products.length === 0 && !loadingProducts && (
         <div className="no-products">
-          <h3>📦 No Products Available</h3>
-          <p>Check back later for new products.</p>
+          <h3>📦 No Retailer Products Available</h3>
+          <p>No products are currently available from retailers.</p>
+          <p>Products must be transferred from farmers to retailers first.</p>
+          <button onClick={loadAvailableProducts} className="btn-primary">
+            🔄 Refresh Products
+          </button>
         </div>
       )}
     </div>
