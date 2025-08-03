@@ -1,0 +1,60 @@
+# Smart Contract Addresses
+# This file contains the deployed contract addresses for the Food Agriculture Supply Chain system
+# 
+# IMPORTANT: These addresses are generated after deployment and will be different for each network
+# 
+# Format: ContractName = Address (Network)
+# 
+# Example addresses (replace with actual deployed addresses):
+# 
+# === LOCALHOST (Hardhat) ===
+# These are the actual deployed contract addresses from the frontend code
+AccessControl = 0x5FC8d32690cc91D4c39d9d3abcBD16989F875707
+StakeholderManager = 0x5FC8d32690cc91D4c39d9d3abcBD16989F875707
+StakeholderRegistry = [To be deployed]
+ProductBatch = 0xa513E6E4b8f2a923D98304ec87F64353C4D5C853
+OfferManager = 0x2279B7A0a67DB372996a5FaB50D91eAA73d2eBe6
+ShipmentTracker = 0x610178dA211FEF7D417bC0e6FeD39F05609AD788
+Registry = 0x8A791620dd6260079BF849Dc5567aDC3F2FdC318
+PublicVerification = 0x0165878A594ca255338adfa4d48449f69242Eb8F
+# 
+# === POLYGON AMOY TESTNET ===
+# AccessControl = [Deploy to get address]
+# StakeholderManager = [Deploy to get address]
+# StakeholderRegistry = [Deploy to get address]
+# ProductBatch = [Deploy to get address]
+# OfferManager = [Deploy to get address]
+# ShipmentTracker = [Deploy to get address]
+# Registry = [Deploy to get address]
+
+# === ORACLE FEEDS ===
+# ETH/USD Price Feed (Polygon): 0xF0d50568e3A7e8259E16663972b11910F89BD8e7
+# 
+# Weather Feeds (Mock Oracles):
+# Temperature Feed = MockOracle.sol (for testing)
+# Humidity Feed = MockOracle.sol (for testing)
+# Rainfall Feed = MockOracle.sol (for testing)
+# Wind Speed Feed = MockOracle.sol (for testing)
+# 
+# Note: Weather data is provided by mock oracles for testing purposes
+# In production, these would be replaced with real Chainlink weather feeds
+# 
+# === DEPLOYMENT INSTRUCTIONS ===
+# 
+# To get actual addresses:
+# 1. Run: yarn hardhat deploy --network [network_name]
+# 2. Check console output for deployed addresses
+# 3. Update this file with the actual addresses
+# 
+# Networks available:
+# - localhost (for local testing)
+# - polygonAmoy (Polygon testnet)
+# 
+# === VERIFICATION ===
+# 
+# After deployment, verify contracts on block explorers:
+# - Polygon Amoy: https://amoy.polygonscan.com/
+# - Polygon Mainnet: https://polygonscan.com/
+# 
+# Verification command:
+# yarn hardhat verify --network [network_name] [contract_address] [constructor_args] 

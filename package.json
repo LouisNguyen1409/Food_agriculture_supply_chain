@@ -26,7 +26,7 @@
     "compile": "npx hardhat compile",
     "deploy:local": "npx hardhat run deploy/01-deploy.js --network localhost",
     "deploy:polygon": "npx hardhat run deploy/01-deploy.js --network polygon",
-    "deploy:polygon-testnet": "npx hardhat run deploy/01-deploy.js --network polygonAmoy",
+    "deploy:polygon-testnet": "npx hardhat run deploy/01-deploy.js --network polygon",
     "deploy:test": "npx hardhat run scripts/deploy-test.js --network localhost"
   },
   "devDependencies": {
