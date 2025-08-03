@@ -8,6 +8,7 @@ import "./styles/farmer.css";
 import "./styles/shipper.css";
 import "./styles/processor.css";
 import "./styles/distributor.css";
+import "./styles/retailer.css";
 
 // Import components and pages
 import { Home } from "./pages"
@@ -17,6 +18,7 @@ import Farmer from "./pages/Farmer"
 import Shipper from "./pages/Shipper"
 import Processor from "./pages/Processor"
 import Distributor from "./pages/Distributor";
+import Retailer from "./pages/Retailer";
 import AccountSwitcher from "./components/AccountSwitcher"
 
 // Network configuration
@@ -253,6 +255,7 @@ function App() {
                         <Route path="/shipper" element={<Shipper />} />
                         <Route path="/processor" element={<Processor />} />
                         <Route path="/distributor" element={<Distributor />} />
+                        <Route path="/retailer" element={<Retailer />} />
                     </Routes>
                 </main>
 
