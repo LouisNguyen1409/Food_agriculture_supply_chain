@@ -6,6 +6,7 @@ import "../styles/distributor.css";
 // Contract ABIs
 const productBatchABI = [
   "function listForSale(uint256, uint256, uint8) external",
+  "function transferOwnership(uint256, address) external",
   "function getBatchInfo(uint256) external view returns (address, address, string, string, uint256, uint256, string, uint8, uint256, uint256)",
   "event BatchListed(uint256 indexed batchId, uint256 price, uint8 tradingMode)"
 ];
@@ -27,9 +28,11 @@ const registryABI = [
 
 const shipmentTrackerABI = [
   "function confirmDelivery(uint256) external",
+  "function createShipment(uint256, uint256, address, address, string, string, string, string) external returns (uint256)",
   "function getUserShipmentsByStatus(address, uint8) external view returns (uint256[])",
   "function shipments(uint256) external view returns (uint256 id, uint256 batchId, uint256 offerId, address sender, address receiver, address shipper, string trackingId, string fromLocation, string toLocation, uint8 status, string metadataHash, uint256 createdAt, uint256 pickedUpAt, uint256 deliveredAt, uint256 confirmedAt)",
-  "event DeliveryConfirmed(uint256 indexed shipmentId, address indexed receiver)"
+  "event DeliveryConfirmed(uint256 indexed shipmentId, address indexed receiver)",
+  "event ShipmentCreated(uint256 indexed shipmentId, uint256 indexed batchId, address indexed receiver)"
 ];
 
 const accessControlABI = [
@@ -152,6 +155,22 @@ const Distributor = () => {
     terms: "",
     duration: "",
     seller: ""
+  });
+  
+  const [createShipment, setCreateShipment] = useState({
+    batchId: "",
+    offerId: "",
+    receiver: "",
+    shipper: "",
+    trackingId: "",
+    fromLocation: "",
+    toLocation: "",
+    metadataHash: ""
+  });
+  
+  const [transferOwnership, setTransferOwnership] = useState({
+    batchId: "",
+    newOwner: ""
   });
   
   const [recordTransaction, setRecordTransaction] = useState({
@@ -507,6 +526,144 @@ const Distributor = () => {
     }
   };
 
+  const handleCreateShipment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!isConnected || !account) {
+      setError("Please connect your wallet first.");
+      return;
+    }
+    
+    setLoading(true);
+    setError("");
+    
+    try {
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
+      const contract = new ethers.Contract(
+        CONTRACT_ADDRESSES.shipmentTracker,
+        shipmentTrackerABI,
+        signer
+      );
+      
+      // Validate addresses
+      let receiverAddress = createShipment.receiver.trim();
+      let shipperAddress = createShipment.shipper.trim();
+      
+      if (!ethers.isAddress(receiverAddress)) {
+        setError("Invalid receiver address. Please enter a valid Ethereum address starting with 0x");
+        setLoading(false);
+        return;
+      }
+      receiverAddress = ethers.getAddress(receiverAddress);
+      
+      // Shipper can be empty (address(0)) for self-delivery
+      if (shipperAddress && !ethers.isAddress(shipperAddress)) {
+        setError("Invalid shipper address. Please enter a valid Ethereum address starting with 0x or leave empty for self-delivery");
+        setLoading(false);
+        return;
+      }
+      
+      const shipper = shipperAddress ? ethers.getAddress(shipperAddress) : ethers.ZeroAddress;
+      
+      const tx = await contract.createShipment(
+        parseInt(createShipment.batchId),
+        parseInt(createShipment.offerId),
+        receiverAddress,
+        shipper,
+        createShipment.trackingId,
+        createShipment.fromLocation,
+        createShipment.toLocation,
+        createShipment.metadataHash
+      );
+      
+      await tx.wait();
+      
+      setSuccess("Shipment created successfully!");
+      setCreateShipment({
+        batchId: "",
+        offerId: "",
+        receiver: "",
+        shipper: "",
+        trackingId: "",
+        fromLocation: "",
+        toLocation: "",
+        metadataHash: ""
+      });
+      await loadData();
+      
+    } catch (error) {
+      console.error("Error creating shipment:", error);
+      setError("Failed to create shipment. Please check your input and try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleTransferOwnership = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!isConnected || !account) {
+      setError("Please connect your wallet first.");
+      return;
+    }
+    
+    setLoading(true);
+    setError("");
+    
+    try {
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
+      const contract = new ethers.Contract(
+        CONTRACT_ADDRESSES.productBatch,
+        productBatchABI,
+        signer
+      );
+      
+      // Validate new owner address
+      let newOwnerAddress = transferOwnership.newOwner.trim();
+      if (!ethers.isAddress(newOwnerAddress)) {
+        setError("Invalid new owner address. Please enter a valid Ethereum address starting with 0x");
+        setLoading(false);
+        return;
+      }
+      newOwnerAddress = ethers.getAddress(newOwnerAddress);
+      
+      // Prevent self-transfer
+      if (newOwnerAddress.toLowerCase() === account.toLowerCase()) {
+        setError("Cannot transfer ownership to yourself");
+        setLoading(false);
+        return;
+      }
+      
+      console.log("Transferring ownership:", {
+        batchId: transferOwnership.batchId,
+        currentOwner: account,
+        newOwner: newOwnerAddress
+      });
+      
+      const tx = await contract.transferOwnership(
+        parseInt(transferOwnership.batchId),
+        newOwnerAddress
+      );
+      
+      await tx.wait();
+      
+      setSuccess("Ownership transferred successfully!");
+      setTransferOwnership({
+        batchId: "",
+        newOwner: ""
+      });
+      await loadData();
+      
+    } catch (error) {
+      console.error("Error transferring ownership:", error);
+      setError("Failed to transfer ownership. Please check your input and try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleAcceptOffer = async (offerId: number) => {
     if (!isConnected || !account) {
       setError("Please connect your wallet first.");
@@ -795,6 +952,133 @@ const Distributor = () => {
             </form>
 
             <div className="section-header">
+              <h2>Create Shipment</h2>
+            </div>
+            
+            <form onSubmit={handleCreateShipment} className="form-section">
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Batch ID:</label>
+                  <input
+                    type="number"
+                    value={createShipment.batchId}
+                    onChange={(e) => setCreateShipment({...createShipment, batchId: e.target.value})}
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Offer ID:</label>
+                  <input
+                    type="number"
+                    value={createShipment.offerId}
+                    onChange={(e) => setCreateShipment({...createShipment, offerId: e.target.value})}
+                    placeholder="0 for direct shipment"
+                  />
+                </div>
+              </div>
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Receiver Address:</label>
+                  <input
+                    type="text"
+                    value={createShipment.receiver}
+                    onChange={(e) => setCreateShipment({...createShipment, receiver: e.target.value})}
+                    placeholder="0x1234...5678"
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Shipper Address (optional):</label>
+                  <input
+                    type="text"
+                    value={createShipment.shipper}
+                    onChange={(e) => setCreateShipment({...createShipment, shipper: e.target.value})}
+                    placeholder="0x1234...5678 (leave empty for self-delivery)"
+                  />
+                </div>
+              </div>
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Tracking ID:</label>
+                  <input
+                    type="text"
+                    value={createShipment.trackingId}
+                    onChange={(e) => setCreateShipment({...createShipment, trackingId: e.target.value})}
+                    placeholder="TRK123456"
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label>From Location:</label>
+                  <input
+                    type="text"
+                    value={createShipment.fromLocation}
+                    onChange={(e) => setCreateShipment({...createShipment, fromLocation: e.target.value})}
+                    placeholder="e.g., Sydney, Australia"
+                    required
+                  />
+                </div>
+              </div>
+              <div className="form-row">
+                <div className="form-group">
+                  <label>To Location:</label>
+                  <input
+                    type="text"
+                    value={createShipment.toLocation}
+                    onChange={(e) => setCreateShipment({...createShipment, toLocation: e.target.value})}
+                    placeholder="e.g., Melbourne, Australia"
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Metadata Hash (optional):</label>
+                  <input
+                    type="text"
+                    value={createShipment.metadataHash}
+                    onChange={(e) => setCreateShipment({...createShipment, metadataHash: e.target.value})}
+                    placeholder="IPFS hash for additional data"
+                  />
+                </div>
+              </div>
+              
+              <button type="submit" className="submit-button" disabled={loading}>
+                {loading ? "Creating..." : "Create Shipment"}
+              </button>
+            </form>
+
+            <div className="section-header">
+              <h2>Transfer Ownership</h2>
+            </div>
+            
+            <form onSubmit={handleTransferOwnership} className="form-section">
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Batch ID:</label>
+                  <input
+                    type="number"
+                    value={transferOwnership.batchId}
+                    onChange={(e) => setTransferOwnership({...transferOwnership, batchId: e.target.value})}
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label>New Owner Address:</label>
+                  <input
+                    type="text"
+                    value={transferOwnership.newOwner}
+                    onChange={(e) => setTransferOwnership({...transferOwnership, newOwner: e.target.value})}
+                    placeholder="0x1234...5678"
+                    required
+                  />
+                </div>
+              </div>
+              
+              <button type="submit" className="submit-button" disabled={loading}>
+                {loading ? "Transferring..." : "Transfer Ownership"}
+              </button>
+            </form>
+
+            <div className="section-header">
               <h2>My Batches</h2>
             </div>
             
@@ -833,6 +1117,24 @@ const Distributor = () => {
                               className="action-button"
                             >
                               List
+                            </button>
+                            <button 
+                              onClick={() => {
+                                setCreateShipment({ ...createShipment, batchId: batch.id.toString() });
+                                setSuccess(`Prepared shipment form for Batch #${batch.id}. Enter details and submit.`);
+                              }}
+                              className="action-button"
+                            >
+                              Create Shipment
+                            </button>
+                            <button 
+                              onClick={() => {
+                                setTransferOwnership({ ...transferOwnership, batchId: batch.id.toString() });
+                                setSuccess(`Prepared transfer form for Batch #${batch.id}. Enter new owner address and submit.`);
+                              }}
+                              className="action-button"
+                            >
+                              Transfer
                             </button>
                           </>
                         )}
