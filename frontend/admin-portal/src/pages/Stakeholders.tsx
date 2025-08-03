@@ -1748,7 +1748,7 @@ const Stakeholders = () => {
                                                 className="copy-btn"
                                                 title="Copy to clipboard"
                                             >
-                                                📋 Copy
+                                                Copy
                                             </button>
                                         </div>
                                         <pre className="license-key-text">{licenseKey}</pre>

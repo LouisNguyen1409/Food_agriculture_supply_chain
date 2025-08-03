@@ -1,10 +1,10 @@
-# 🧪 Supply Chain Smart Contracts Testing Suite
+# Supply Chain Smart Contracts Testing Suite
 
 ## Overview
 
 This test suite provides comprehensive coverage for the **Access Control** system of the supply chain smart contracts, focusing on role-based access control, stakeholder management, and license key functionality.
 
-## 📁 Test Structure
+##  Test Structure
 
 ### `/test/access/` - Access Control Tests
 
@@ -12,32 +12,32 @@ This test suite provides comprehensive coverage for the **Access Control** syste
 **Core functionality testing for the base access control contract**
 
 **Test Coverage:**
-- ✅ **Deployment & Initialization**
+-  **Deployment & Initialization**
   - Owner assignment
   - Initial state validation
 
-- ✅ **Role Management**
+-  **Role Management**
   - Setting/removing roles (FARMER, PROCESSOR, DISTRIBUTOR, SHIPPER, RETAILER, ADMIN)
   - Role validation and authorization
   - Permission inheritance
 
-- ✅ **Account Status Management**
+-  **Account Status Management**
   - Account activation/deactivation
   - Reactivation functionality
   - Status persistence
 
-- ✅ **Access Control Modifiers**
+-  **Access Control Modifiers**
   - `onlyOwner` - restricts to contract owner
   - `onlyAdmin` - restricts to admin role
   - `onlyActiveStakeholder` - active stakeholder validation
   - `onlyRole` - specific role validation
 
-- ✅ **Trading Authorization**
+-  **Trading Authorization**
   - Valid trading pair authorization
   - Invalid trading pair rejection
   - Inactive account handling
 
-- ✅ **Error Handling & Edge Cases**
+-  **Error Handling & Edge Cases**
   - Zero address handling
   - Invalid role numbers
   - State consistency after multiple operations
@@ -47,43 +47,43 @@ This test suite provides comprehensive coverage for the **Access Control** syste
 **Comprehensive testing for stakeholder registration and license key management**
 
 **Test Coverage:**
-- ✅ **Registration Request System**
+-  **Registration Request System**
   - User self-registration requests
   - Request validation (role, data completeness)
   - Blacklist enforcement
   - Already registered user prevention
 
-- ✅ **Admin Review Process**
+-  **Admin Review Process**
   - Request approval with license key generation
   - Request rejection with reason tracking
   - Request status management (PENDING, APPROVED, REJECTED, CANCELLED)
   - Authorization validation (admin-only operations)
 
-- ✅ **License Key Management**
+-  **License Key Management**
   - Automatic key generation (format: `SC-XXXX-XXXX-XXXX`)
   - License key retrieval (user/admin access)
   - License key verification and validation
   - License key regeneration (admin functionality)
   - Key invalidation on regeneration
 
-- ✅ **Direct Stakeholder Registration**
+-  **Direct Stakeholder Registration**
   - Admin-only direct registration
   - License key generation for direct registrations
   - Role assignment and activation
 
-- ✅ **Stakeholder Information Management**
+-  **Stakeholder Information Management**
   - Complete stakeholder information retrieval
   - Privacy controls (self/admin access only)
   - Stakeholder statistics and role counts
   - Partnership authorization/revocation
 
-- ✅ **Request Information & Statistics**
+-  **Request Information & Statistics**
   - Registration request details
   - Pending request queries (admin)
   - User request history
   - Registration statistics (total, pending, approved, rejected, cancelled)
 
-- ✅ **Blacklist Management**
+-  **Blacklist Management**
   - Address blacklisting/removal
   - Blacklist enforcement in registration
   - Admin-only blacklist operations
@@ -92,44 +92,44 @@ This test suite provides comprehensive coverage for the **Access Control** syste
 **Read-only interface testing for efficient stakeholder queries**
 
 **Test Coverage:**
-- ✅ **Integration with StakeholderManager**
+-  **Integration with StakeholderManager**
   - Real-time data synchronization
   - Contract address validation
   - Deployment with zero address prevention
 
-- ✅ **Stakeholder Information Queries**
+-  **Stakeholder Information Queries**
   - Total stakeholder count
   - Registration status checking
   - Role-specific identification
   - Complete stakeholder information retrieval
 
-- ✅ **Role-Based Queries**
+-  **Role-Based Queries**
   - Stakeholders by role listing
   - Role count statistics
   - Active stakeholders filtering
   - Empty role handling
 
-- ✅ **Active Status Management**
+-  **Active Status Management**
   - Active status validation
   - Real-time status updates
   - Deactivation/reactivation reflection
 
-- ✅ **Search and Filtering**
+-  **Search and Filtering**
   - Stakeholder location information
   - Complete stakeholder listing
   - Batch query efficiency
 
-- ✅ **Gas Efficiency Testing**
+-  **Gas Efficiency Testing**
   - Multiple query optimization
   - Batch operation efficiency
   - Performance benchmarking
 
-- ✅ **Data Consistency Validation**
+-  **Data Consistency Validation**
   - Cross-method result consistency
   - Role-specific query alignment
   - Integration accuracy with StakeholderManager
 
-## 🚀 Running Tests
+##  Running Tests
 
 ### Prerequisites
 ```bash
@@ -172,7 +172,7 @@ npx hardhat test test/access/StakeholderManager.test.js --grep "Registration Req
 npx hardhat test test/access/AccessControl.test.js --grep "Role Management"
 ```
 
-## 📊 Test Coverage Goals
+##  Test Coverage Goals
 
 | Contract | Lines | Functions | Branches | Statements |
 |----------|-------|-----------|----------|------------|
@@ -180,7 +180,7 @@ npx hardhat test test/access/AccessControl.test.js --grep "Role Management"
 | StakeholderManager | 95%+ | 100% | 90%+ | 95%+ |
 | StakeholderRegistry | 95%+ | 100% | 85%+ | 95%+ |
 
-## 🔍 Key Test Scenarios
+##  Key Test Scenarios
 
 ### 1. Complete Registration Flow
 ```javascript
@@ -202,27 +202,27 @@ npx hardhat test test/access/AccessControl.test.js --grep "Role Management"
 // StakeholderManager changes → StakeholderRegistry reflection → Cross-contract validation
 ```
 
-## 🛡️ Security Test Focus
+## ️ Security Test Focus
 
 ### Access Control Security
-- ✅ **Owner-only functions** cannot be called by non-owners
-- ✅ **Admin-only functions** reject non-admin callers
-- ✅ **Role-based restrictions** properly enforced
-- ✅ **Active stakeholder validation** prevents inactive user actions
+-  **Owner-only functions** cannot be called by non-owners
+-  **Admin-only functions** reject non-admin callers
+-  **Role-based restrictions** properly enforced
+-  **Active stakeholder validation** prevents inactive user actions
 
 ### Registration Security
-- ✅ **Input validation** prevents malformed registrations
-- ✅ **Blacklist enforcement** blocks malicious actors
-- ✅ **License key uniqueness** prevents collisions
-- ✅ **Privacy controls** protect sensitive information
+-  **Input validation** prevents malformed registrations
+-  **Blacklist enforcement** blocks malicious actors
+-  **License key uniqueness** prevents collisions
+-  **Privacy controls** protect sensitive information
 
 ### Data Integrity
-- ✅ **State consistency** maintained across operations
-- ✅ **Event emission** for all critical operations
-- ✅ **Error handling** for edge cases
-- ✅ **Gas optimization** without security compromise
+-  **State consistency** maintained across operations
+-  **Event emission** for all critical operations
+-  **Error handling** for edge cases
+-  **Gas optimization** without security compromise
 
-## 🚨 Common Test Patterns
+##  Common Test Patterns
 
 ### Testing Role-Based Access
 ```javascript
@@ -259,7 +259,7 @@ it("Should emit correct events", async function () {
 });
 ```
 
-## 📈 Performance Benchmarks
+##  Performance Benchmarks
 
 ### Gas Usage Targets
 - **Role assignment**: < 50,000 gas
@@ -272,7 +272,7 @@ it("Should emit correct events", async function () {
 - **Batch operations**: < 500ms
 - **Complex role queries**: < 200ms
 
-## 🐛 Debugging Tests
+##  Debugging Tests
 
 ### Common Issues
 1. **Contract deployment failures** - Check constructor parameters
@@ -292,13 +292,13 @@ npx hardhat test test/access/AccessControl.test.js --grep "specific test" --logs
 npx hardhat compile --show-stack-traces
 ```
 
-## 🔄 Continuous Integration
+##  Continuous Integration
 
 ### Pre-commit Hooks
-- ✅ Run access control tests
-- ✅ Check test coverage
-- ✅ Validate gas usage
-- ✅ Lint test files
+-  Run access control tests
+-  Check test coverage
+-  Validate gas usage
+-  Lint test files
 
 ### CI Pipeline
 1. **Test Execution** - All access tests pass
@@ -308,7 +308,7 @@ npx hardhat compile --show-stack-traces
 
 ---
 
-## 📚 Additional Resources
+##  Additional Resources
 
 - [Hardhat Testing Guide](https://hardhat.org/tutorial/testing-contracts.html)
 - [Chai Assertion Library](https://www.chaijs.com/api/bdd/)

@@ -47,11 +47,15 @@ module.exports = async ({ getNamedAccounts, deployments }) => {
         waitConfirmations: network.config.blockConfirmations || 1,
     })
     log(`StakeholderManager deployed at ${stakeholderManager.address}`)
-    
+
     // Ensure deployer has admin role
-    const StakeholderManager = await ethers.getContractFactory("StakeholderManager")
-    const stakeholderManagerContract = StakeholderManager.attach(stakeholderManager.address)
-    
+    const StakeholderManager = await ethers.getContractFactory(
+        "StakeholderManager"
+    )
+    const stakeholderManagerContract = StakeholderManager.attach(
+        stakeholderManager.address
+    )
+
     // Explicitly grant admin role to whoever deployed the contract (Role.ADMIN = 6)
     log("Ensuring deployer has admin role...")
     const tx = await stakeholderManagerContract.grantRole(deployer, 6)

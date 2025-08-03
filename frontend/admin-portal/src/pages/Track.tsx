@@ -312,7 +312,7 @@ const Track: React.FC = () => {
                         
                         {verificationResult && (
                             <div className={`verification-badge ${verificationResult.isAuthentic ? 'authentic' : 'not-authentic'}`}>
-                                {verificationResult.isAuthentic ? '✅ Verified Authentic' : '❌ Verification Failed'}
+                                {verificationResult.isAuthentic ? ' Verified Authentic' : '❌ Verification Failed'}
                             </div>
                         )}
 
@@ -387,11 +387,11 @@ const Track: React.FC = () => {
                                     {shipmentInfo.isProductValid &&
                                     shipmentInfo.isShipmentValid ? (
                                         <span className="verified">
-                                            ✅ Verified
+                                             Verified
                                         </span>
                                     ) : (
                                         <span className="not-verified">
-                                            ❌ Not Verified
+                                             Not Verified
                                         </span>
                                     )}
                                 </span>
@@ -405,11 +405,11 @@ const Track: React.FC = () => {
                                     <span className="detail-value verification-status">
                                         {verificationResult.isAuthentic ? (
                                             <span className="verified">
-                                                ✅ Authentic
+                                                 Authentic
                                             </span>
                                         ) : (
                                             <span className="not-verified">
-                                                ❌ Not Authentic
+                                                 Not Authentic
                                             </span>
                                         )}
                                     </span>
