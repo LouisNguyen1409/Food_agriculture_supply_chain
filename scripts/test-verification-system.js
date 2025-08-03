@@ -328,11 +328,7 @@ async function main() {
 
         // Add provenance for apples with dynamic data
         const farmer2Location = await getStakeholderLocation(stakeholderManager, farmer2.address);
-
-        await provenanceTracker
-            .connect(farmer2)
-            .addProvenanceRecord(2, "Harvested", farmer2Location, appleMetadata)
-
+        
         const qrCodeTx2 = await qrCodeVerifier
             .connect(farmer2)
             .generateQRCode(2)
