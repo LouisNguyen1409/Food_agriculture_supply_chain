@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { ethers } from "ethers";
 import "../styles/pages.css";
-import "../styles/distributor.css";
+import "../styles/retailer.css";
 
 // Contract ABIs
 const productBatchABI = [
@@ -124,7 +124,7 @@ const getShipmentStatusName = (status: number): string => {
   return statuses[status] || "UNKNOWN";
 };
 
-const Distributor = () => {
+const Retailer = () => {
   const [isConnected, setIsConnected] = useState(false);
   const [account, setAccount] = useState<string>("");
   const [loading, setLoading] = useState(false);
@@ -139,7 +139,7 @@ const Distributor = () => {
   // Role checking states
   const [userRole, setUserRole] = useState<number>(0);
   const [isUserActive, setIsUserActive] = useState<boolean>(false);
-  const [hasDistributorRole, setHasDistributorRole] = useState<boolean>(false);
+  const [hasRetailerRole, setHasRetailerRole] = useState<boolean>(false);
   
   // Form states
   const [listForSale, setListForSale] = useState({
@@ -269,17 +269,17 @@ const Distributor = () => {
     try {
       const role = await contract.getRole(account);
       const isActive = await contract.isFullyActive(account);
-      const hasDistributor = await contract.hasRole(account, 3); // DISTRIBUTOR role = 3
+      const hasRetailer = await contract.hasRole(account, 5); // RETAILER role = 5
       
       setUserRole(Number(role));
       setIsUserActive(isActive);
-      setHasDistributorRole(hasDistributor);
+      setHasRetailerRole(hasRetailer);
       
     } catch (error) {
       console.error("Error checking user role:", error);
       setUserRole(0);
       setIsUserActive(false);
-      setHasDistributorRole(false);
+      setHasRetailerRole(false);
     }
   };
 
@@ -763,7 +763,7 @@ const Distributor = () => {
         buyerAddress,
         ethers.parseEther(recordTransaction.price),
         parseInt(recordTransaction.quantity),
-        "DISTRIBUTOR_SALE"
+        "RETAILER_SALE"
       );
       
       await tx.wait();
@@ -787,20 +787,20 @@ const Distributor = () => {
 
   if (!isConnected) {
     return (
-      <div className="distributor-page">
+      <div className="retailer-page">
         <div className="connection-message">
-          <h2>Distributor Dashboard</h2>
-          <p>Please connect your wallet to access the Distributor dashboard.</p>
+          <h2>Retailer Dashboard</h2>
+          <p>Please connect your wallet to access the Retailer dashboard.</p>
         </div>
       </div>
     );
   }
 
-  if (!hasDistributorRole || !isUserActive) {
+  if (!hasRetailerRole || !isUserActive) {
     return (
-      <div className="distributor-page">
+      <div className="retailer-page">
         <div className="page-header">
-          <h1>Distributor Dashboard</h1>
+          <h1>Retailer Dashboard</h1>
           <p>Welcome, {formatAddress(account)}</p>
         </div>
 
@@ -810,8 +810,8 @@ const Distributor = () => {
             <div className="status-grid">
               <div className="status-item">
                 <span className="status-label">Role:</span>
-                <span className={`status-value ${userRole === 3 ? 'success' : 'error'}`}>
-                  {userRole === 3 ? 'DISTRIBUTOR' : userRole === 0 ? 'NONE' : `ROLE_${userRole}`}
+                <span className={`status-value ${userRole === 5 ? 'success' : 'error'}`}>
+                  {userRole === 5 ? 'RETAILER' : userRole === 0 ? 'NONE' : `ROLE_${userRole}`}
                 </span>
               </div>
               <div className="status-item">
@@ -821,9 +821,9 @@ const Distributor = () => {
                 </span>
               </div>
               <div className="status-item">
-                <span className="status-label">Distributor Permission:</span>
-                <span className={`status-value ${hasDistributorRole ? 'success' : 'error'}`}>
-                  {hasDistributorRole ? 'GRANTED' : 'DENIED'}
+                <span className="status-label">Retailer Permission:</span>
+                <span className={`status-value ${hasRetailerRole ? 'success' : 'error'}`}>
+                  {hasRetailerRole ? 'GRANTED' : 'DENIED'}
                 </span>
               </div>
               <div className="status-item">
@@ -835,19 +835,19 @@ const Distributor = () => {
             </div>
             
             <div className="role-instructions">
-              <h3>How to Get Distributor Role</h3>
-              <p>To use the Distributor dashboard, you need to be granted the DISTRIBUTOR role by an admin.</p>
+              <h3>How to Get Retailer Role</h3>
+              <p>To use the Retailer dashboard, you need to be granted the RETAILER role by an admin.</p>
               <ol>
                 <li>Contact the system administrator</li>
                 <li>Provide your wallet address: <code>{account}</code></li>
-                <li>Request the DISTRIBUTOR role to be assigned</li>
+                <li>Request the RETAILER role to be assigned</li>
                 <li>Once granted, refresh this page</li>
               </ol>
               
               <div className="admin-actions">
                 <h4>For Administrators</h4>
-                <p>To grant the DISTRIBUTOR role to this user:</p>
-                <code>grantRole({account}, 3)</code>
+                <p>To grant the RETAILER role to this user:</p>
+                <code>grantRole({account}, 5)</code>
               </div>
             </div>
           </div>
@@ -857,9 +857,9 @@ const Distributor = () => {
   }
 
   return (
-    <div className="distributor-page">
+    <div className="retailer-page">
       <div className="page-header">
-        <h1>Distributor Dashboard</h1>
+        <h1>Retailer Dashboard</h1>
         <p>Welcome, {formatAddress(account)}</p>
       </div>
 
@@ -1412,4 +1412,4 @@ const Distributor = () => {
   );
 };
 
-export default Distributor; 
+export default Retailer; 

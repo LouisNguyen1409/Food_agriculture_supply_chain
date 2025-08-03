@@ -48,6 +48,7 @@ module.exports = async ({ getNamedAccounts, deployments }) => {
     })
     log(`StakeholderManager deployed at ${stakeholderManager.address}`)
 
+
     // Ensure deployer has admin role
     const StakeholderManager = await ethers.getContractFactory("StakeholderManager")
     const stakeholderManagerContract = StakeholderManager.attach(stakeholderManager.address)

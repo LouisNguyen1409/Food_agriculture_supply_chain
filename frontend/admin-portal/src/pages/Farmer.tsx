@@ -799,7 +799,7 @@ const Farmer = () => {
         setError("You don't have the FARMER role in OfferManager. Please contact an admin to approve your registration.");
         setRoleGrantFailed(true);
       } else {
-        console.log("✅ Account has FARMER role in OfferManager:", account);
+        console.log(" Account has FARMER role in OfferManager:", account);
       }
       
     } catch (error) {
@@ -854,7 +854,7 @@ const Farmer = () => {
         setError("You don't have the FARMER role in Registry. Please contact an admin to approve your registration.");
         setRoleGrantFailed(true);
       } else {
-        console.log("✅ Account has FARMER role in both ProductBatch and Registry:", account);
+        console.log(" Account has FARMER role in both ProductBatch and Registry:", account);
       }
       
     } catch (error) {

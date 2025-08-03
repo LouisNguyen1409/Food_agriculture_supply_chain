@@ -2,6 +2,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.515.0",
     "@aws-sdk/s3-request-presigner": "^3.515.0",
+    "axios": "^1.11.0",
     "cors": "^2.8.5",
     "crypto": "^1.0.1",
     "dotenv": "^17.2.0",
@@ -25,9 +26,14 @@
     "test:s3-verbose": "npx hardhat test src/test/FileStorageS3Integration.test.js --verbose",
     "compile": "npx hardhat compile",
     "deploy:local": "npx hardhat run deploy/01-deploy.js --network localhost",
-    "deploy:polygon": "npx hardhat run deploy/01-deploy.js --network polygon",
-    "deploy:polygon-testnet": "npx hardhat run deploy/01-deploy.js --network polygon",
-    "deploy:test": "npx hardhat run scripts/deploy-test.js --network localhost"
+    "deploy:polygon": "npx hardhat deploy --network polygon",
+    "deploy:polygon-testnet": "npx hardhat deploy --network polygon",
+    "deploy:test": "npx hardhat run scripts/deploy-test.js --network localhost",
+    "weather:update": "npx hardhat run scripts/update-weather-feeds.js --network localhost",
+    "weather:update:polygon": "npx hardhat run scripts/update-weather-feeds.js --network polygon",
+    "weather:monitor": "npx hardhat run scripts/weather-monitor.js --network localhost",
+    "weather:monitor:polygon": "npx hardhat run scripts/weather-monitor.js --network polygon",
+    "weather:test": "npx hardhat run scripts/test-weather-integration.js --network localhost"
   },
   "devDependencies": {
     "@chainlink/contracts": "^1.4.0",

@@ -193,112 +193,17 @@ const Verify: React.FC = () => {
 
       {verificationResult && (
         <div className={`verification-result ${verificationResult.isAuthentic ? 'authentic' : 'not-authentic'}`}>
-          {verificationResult.isAuthentic ? (
-            <div className="authentic-result">
-              <div className="result-header">
-                <h2>✅ Product Verified Authentic!</h2>
-                <p>This product has been verified on the blockchain</p>
-              </div>
+          <h2>Verification Result</h2>
+          <p className="verification-status">
+            Status: {verificationResult.isAuthentic ? 'Authentic ✅' : 'Not Verified ❌'}
+          </p>
 
-              <div className="product-details">
-                <h3>📦 Product Information</h3>
-                <div className="detail-grid">
-                  <div className="detail-item">
-                    <span className="label">Product:</span>
-                    <span className="value">{verificationResult.productInfo?.productName}</span>
-                  </div>
-                  <div className="detail-item">
-                    <span className="label">Origin:</span>
-                    <span className="value">{verificationResult.productInfo?.origin}</span>
-                  </div>
-                  <div className="detail-item">
-                    <span className="label">Production Date:</span>
-                    <span className="value">{verificationResult.productInfo?.productionDate.toLocaleDateString()}</span>
-                  </div>
-                  <div className="detail-item">
-                    <span className="label">Current Location:</span>
-                    <span className="value">{verificationResult.productInfo?.currentLocation}</span>
-                  </div>
-                  <div className="detail-item">
-                    <span className="label">Farmer:</span>
-                    <span className="value">{verificationResult.productInfo?.farmerInfo}</span>
-                  </div>
-                  <div className="detail-item">
-                    <span className="label">Quality Grade:</span>
-                    <span className="value">{verificationResult.productInfo?.qualityGrade}</span>
-                  </div>
-                  <div className="detail-item">
-                    <span className="label">Organic:</span>
-                    <span className="value">{verificationResult.productInfo?.isOrganic ? 'Yes ✓' : 'No'}</span>
-                  </div>
-                  <div className="detail-item">
-                    <span className="label">Supply Chain Steps:</span>
-                    <span className="value">{verificationResult.productInfo?.supplyChainSteps}</span>
-                  </div>
-                </div>
-
-                {verificationResult.consumerSummary && (
-                  <div className="consumer-summary">
-                    <h3>📊 Consumer Summary</h3>
-                    <div className="summary-grid">
-                      <div className="summary-item">
-                        <span className="label">Farm Origin:</span>
-                        <span className="value">{verificationResult.consumerSummary.farmOrigin}</span>
-                      </div>
-                      <div className="summary-item">
-                        <span className="label">Harvest Date:</span>
-                        <span className="value">{verificationResult.consumerSummary.harvestDate.toLocaleDateString()}</span>
-                      </div>
-                      <div className="summary-item">
-                        <span className="label">Current Status:</span>
-                        <span className="value">{verificationResult.consumerSummary.currentStatus}</span>
-                      </div>
-                      <div className="summary-item">
-                        <span className="label">Days from Harvest:</span>
-                        <span className="value">{verificationResult.consumerSummary.daysFromHarvest} days</span>
-                      </div>
-                      <div className="summary-item">
-                        <span className="label">Quality Indicator:</span>
-                        <span className="value">{verificationResult.consumerSummary.qualityIndicator}</span>
-                      </div>
-                      <div className="summary-item">
-                        <span className="label">Total Supply Chain Steps:</span>
-                        <span className="value">{verificationResult.consumerSummary.totalSteps}</span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="actions">
-                <button onClick={resetVerification} className="btn-primary">
-                  🔍 Verify Another Product
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="invalid-result">
-              <div className="result-header">
-                <h2>❌ Verification Failed</h2>
-                <p>This product could not be verified</p>
-              </div>
-              <div className="error-details">
-                <p><strong>Error:</strong> {verificationResult.error}</p>
-                <div className="warning-info">
-                  <h4>⚠️ This might mean:</h4>
-                  <ul>
-                    <li>The QR code is invalid or damaged</li>
-                    <li>The product is not registered in our system</li>
-                    <li>The QR code is from a different verification system</li>
-                    <li>The product may be counterfeit</li>
-                  </ul>
-                </div>
-              </div>
-              <div className="actions">
-                <button onClick={resetVerification} className="btn-primary">
-                  🔄 Try Again
-                </button>
-              </div>
+          {verificationResult.name && (
+            <div className="product-details">
+              <h3>Product Details</h3>
+              <p><strong>Name:</strong> {verificationResult.name}</p>
+              <p><strong>Producer:</strong> {verificationResult.producer}</p>
+              <p><strong>Registered:</strong> {verificationResult.timestamp?.toLocaleString()}</p>
             </div>
           )}
         </div>
