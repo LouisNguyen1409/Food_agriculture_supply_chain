@@ -129,17 +129,17 @@ const AccountSwitcher: React.FC = () => {
                     </div>
                     <div className="account-actions">
                         <button className="switch-btn" onClick={switchAccount}>
-                            🔄 Switch
+                            Switch
                         </button>
                         <button className="disconnect-btn" onClick={disconnectWallet}>
-                            🚪 Disconnect
+                            Disconnect
                         </button>
                     </div>
                 </div>
             ) : (
                 <div className="connect-container">
                     <button className="connect-btn" onClick={connectWallet}>
-                        🦊 Connect Wallet
+                        Connect Wallet
                     </button>
                 </div>
             )}

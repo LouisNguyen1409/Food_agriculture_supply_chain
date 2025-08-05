@@ -67,13 +67,13 @@ export const useContracts = (): UseContractsReturn => {
 
       // Check network
       const network = await provider.getNetwork();
-      console.log('🌐 Connected to network:', network.name, 'Chain ID:', network.chainId);
+      console.log('[INFO] Connected to network:', network.name, 'Chain ID:', network.chainId);
 
       if (!contractAddresses) {
         throw new Error('Contract addresses not found. Please deploy contracts first.');
       }
 
-      console.log('📋 Loading contract addresses:', contractAddresses);
+      console.log('[INFO] Loading contract addresses:', contractAddresses);
 
       const contractInstances: ContractInstances = {};
 
@@ -84,7 +84,7 @@ export const useContracts = (): UseContractsReturn => {
           contractABIs.ProductBatch,
           signerInstance
         );
-        console.log('✅ ProductBatch contract loaded');
+        console.log('[SUCCESS] ProductBatch contract loaded');
       }
 
       // Load PublicVerification contract
@@ -94,7 +94,7 @@ export const useContracts = (): UseContractsReturn => {
           contractABIs.PublicVerification,
           signerInstance
         );
-        console.log('✅ PublicVerification contract loaded');
+        console.log('[SUCCESS] PublicVerification contract loaded');
       }
 
       // Load TransactionRegistry contract
@@ -104,19 +104,19 @@ export const useContracts = (): UseContractsReturn => {
           contractABIs.TransactionRegistry,
           signerInstance
         );
-        console.log('✅ TransactionRegistry contract loaded');
+        console.log('[SUCCESS] TransactionRegistry contract loaded');
       } else {
-        console.log('⚠️ TransactionRegistry contract address not found');
+        console.log('[WARNING] TransactionRegistry contract address not found');
       }
 
       setContracts(contractInstances);
       setIsConnected(true);
       setLoading(false);
 
-      console.log('🎉 Contracts connected successfully');
+      console.log('[SUCCESS] Contracts connected successfully');
 
     } catch (err: any) {
-      console.error('❌ Contract connection error:', err);
+      console.error('[ERROR] Contract connection error:', err);
       setError(err.message);
       setLoading(false);
       setIsConnected(false);
@@ -130,7 +130,7 @@ export const useContracts = (): UseContractsReturn => {
         try {
           const accounts = await window.ethereum.request({ method: 'eth_accounts' });
           if (accounts.length > 0) {
-            console.log('👛 Wallet connected, loading contracts...');
+            console.log('[INFO] Wallet connected, loading contracts...');
             await connectContracts();
           }
         } catch (err) {

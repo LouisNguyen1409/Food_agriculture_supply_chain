@@ -119,7 +119,7 @@ const Verify: React.FC = () => {
         <div className={`verification-result ${verificationResult.isAuthentic ? 'authentic' : 'not-authentic'}`}>
           <h2>Verification Result</h2>
           <p className="verification-status">
-            Status: {verificationResult.isAuthentic ? 'Authentic ' : 'Not Verified ❌'}
+            Status: {verificationResult.isAuthentic ? 'Authentic' : 'Not Verified'}
           </p>
           
           {verificationResult.name && (

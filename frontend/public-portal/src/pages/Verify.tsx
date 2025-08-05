@@ -40,7 +40,7 @@ const Verify: React.FC = () => {
 
     setVerifying(true);
     try {
-      console.log('🔍 Verifying QR code:', qrCode);
+      console.log('Verifying QR code:', qrCode);
 
       // Verify the product
       const result = await contracts.publicVerification.verifyProduct(qrCode);
@@ -66,7 +66,7 @@ const Verify: React.FC = () => {
           await loadSupplyChainHistory(verificationData.batchId);
         }
 
-        console.log('✅ Product verified successfully');
+        console.log('Product verified successfully');
       } else {
         setVerificationResult({
           isValid: false,
@@ -83,7 +83,7 @@ const Verify: React.FC = () => {
       }
 
     } catch (err: any) {
-      console.error('❌ Verification error:', err);
+      console.error('Verification error:', err);
       alert('Verification failed: ' + (err.message || 'Unknown error'));
       setVerificationResult(null);
       setSupplyChainSteps([]);
@@ -93,12 +93,12 @@ const Verify: React.FC = () => {
 
   const loadSupplyChainHistory = async (batchId: number) => {
     if (!contracts?.transactionRegistry) {
-      console.log('⚠️ Transaction registry not available - supply chain history disabled');
+      console.log('Transaction registry not available - supply chain history disabled');
       return;
     }
 
     try {
-      console.log('📋 Loading supply chain history for batch:', batchId);
+      console.log('Loading supply chain history for batch:', batchId);
 
       const steps = await contracts.transactionRegistry.getSupplyChainHistory(batchId);
 
@@ -112,31 +112,31 @@ const Verify: React.FC = () => {
       }));
 
       setSupplyChainSteps(processedSteps);
-      console.log('✅ Supply chain history loaded:', processedSteps.length, 'steps');
+      console.log('Supply chain history loaded:', processedSteps.length, 'steps');
 
     } catch (err: any) {
-      console.error('❌ Error loading supply chain history:', err);
+      console.error('Error loading supply chain history:', err);
       setSupplyChainSteps([]);
     }
   };
 
   const getActionIcon = (action: string): string => {
-    if (action.includes('SPOT')) return '🌱';
-    if (action.includes('PROCESSOR_SALE')) return '🏭';
-    if (action.includes('DISTRIBUTOR_SALE')) return '🚛';
-    if (action.includes('RETAILER_SALE')) return '🏪';
-    if (action.includes('CONSUMER_PURCHASE')) return '🛒';
-    return '📦';
+    if (action.includes('SPOT')) return 'FARM';
+    if (action.includes('PROCESSOR_SALE')) return 'PROC';
+    if (action.includes('DISTRIBUTOR_SALE')) return 'DIST';
+    if (action.includes('RETAILER_SALE')) return 'RETAIL';
+    if (action.includes('CONSUMER_PURCHASE')) return 'BUY';
+    return 'PKG';
   };
 
   if (!isConnected) {
     return (
       <div className="page-container">
         <div className="connection-required">
-          <h3>🦊 Wallet Connection Required</h3>
+          <h3>Wallet Connection Required</h3>
           <p>Please connect your wallet to verify products.</p>
           <button onClick={connectContracts} className="btn-primary">
-            🔗 Connect Contracts
+            Connect Contracts
           </button>
         </div>
       </div>
@@ -158,10 +158,10 @@ const Verify: React.FC = () => {
     return (
       <div className="page-container">
         <div className="error-container">
-          <h3>⚠️ Connection Error</h3>
+          <h3>Connection Error</h3>
           <p>{error}</p>
           <button onClick={connectContracts} className="btn-primary">
-            🔄 Retry Connection
+            Retry Connection
           </button>
         </div>
       </div>
@@ -172,7 +172,7 @@ const Verify: React.FC = () => {
     <div className="page-container">
       <div className="verify-container">
         <div className="verify-header">
-          <h2>🔍 Verify Product Authenticity</h2>
+          <h2>Verify Product Authenticity</h2>
           <p>Scan or enter the QR code to verify your product</p>
         </div>
 
@@ -194,7 +194,7 @@ const Verify: React.FC = () => {
             disabled={verifying || !qrCode.trim()}
             className="verify-btn"
           >
-            {verifying ? '🔍 Verifying...' : '✅ Verify Product'}
+            {verifying ? 'Verifying...' : 'Verify Product'}
           </button>
         </div>
 
@@ -203,21 +203,21 @@ const Verify: React.FC = () => {
             {verificationResult.isValid ? (
               <div className="result-content">
                 <div className="result-header">
-                  <h3>✅ Product Verified!</h3>
+                  <h3>Product Verified!</h3>
                   <span className="verified-badge">AUTHENTIC</span>
                 </div>
 
                 <div className="product-details">
                   <div className="detail-row">
-                    <span className="label">📦 Product:</span>
+                    <span className="label">Product:</span>
                     <span className="value">{verificationResult.productName}</span>
                   </div>
                   <div className="detail-row">
-                    <span className="label">🌍 Origin:</span>
+                    <span className="label">Origin:</span>
                     <span className="value">{verificationResult.origin}</span>
                   </div>
                   <div className="detail-row">
-                    <span className="label">👨‍🌾 Farmer:</span>
+                    <span className="label">Farmer:</span>
                     <span className="value">
                       {verificationResult.farmer.length > 10
                         ? `${verificationResult.farmer.slice(0,6)}...${verificationResult.farmer.slice(-4)}`
@@ -226,15 +226,15 @@ const Verify: React.FC = () => {
                     </span>
                   </div>
                   <div className="detail-row">
-                    <span className="label">📅 Production Date:</span>
+                    <span className="label">Production Date:</span>
                     <span className="value">{verificationResult.productionDate.toLocaleDateString()}</span>
                   </div>
                   <div className="detail-row">
-                    <span className="label">📍 Current Location:</span>
+                    <span className="label">Current Location:</span>
                     <span className="value">{verificationResult.lastLocation}</span>
                   </div>
                   <div className="detail-row">
-                    <span className="label">🆔 Batch ID:</span>
+                    <span className="label">Batch ID:</span>
                     <span className="value">#{verificationResult.batchId}</span>
                   </div>
                 </div>
@@ -243,12 +243,12 @@ const Verify: React.FC = () => {
                 {supplyChainSteps.length > 0 && (
                   <div className="supply-chain-section">
                     <div className="section-header">
-                      <h4>📋 Supply Chain Journey</h4>
+                      <h4>Supply Chain Journey</h4>
                       <button
                         onClick={() => setShowSupplyChain(!showSupplyChain)}
                         className="toggle-btn"
                       >
-                        {showSupplyChain ? '🔼 Hide' : '🔽 Show'} ({supplyChainSteps.length} steps)
+                        {showSupplyChain ? 'Hide' : 'Show'} ({supplyChainSteps.length} steps)
                       </button>
                     </div>
 
@@ -269,10 +269,10 @@ const Verify: React.FC = () => {
                               <div className="step-details">
                                 <p className="action">{step.action}</p>
                                 <div className="step-info">
-                                  <span className="location">📍 {step.location}</span>
-                                  <span className="price">💰 {step.price} ETH</span>
+                                  <span className="location">{step.location}</span>
+                                  <span className="price">{step.price} ETH</span>
                                   <span className="address">
-                                    👤 {step.stakeholder.slice(0,6)}...{step.stakeholder.slice(-4)}
+                                    {step.stakeholder.slice(0,6)}...{step.stakeholder.slice(-4)}
                                   </span>
                                 </div>
                               </div>
@@ -288,7 +288,7 @@ const Verify: React.FC = () => {
             ) : (
               <div className="result-content">
                 <div className="result-header">
-                  <h3>❌ Product Not Verified</h3>
+                  <h3>Product Not Verified</h3>
                   <span className="invalid-badge">INVALID</span>
                 </div>
                 <p>This QR code is not valid or the product cannot be verified.</p>

@@ -10,16 +10,16 @@ function App() {
       <div className="App">
         <header className="app-header">
           <Link to="/" className="logo">
-            <h1>🌱 Food Chain Verifier</h1>
+            <h1>Food Chain Verifier</h1>
           </Link>
           <AccountSwitcher />
         </header>
 
         <nav className="nav-links">
           <ul>
-            <li><Link to="/">🏠 Home</Link></li>
-            <li><Link to="/verify">🔍 Verify</Link></li>
-            <li><Link to="/marketplace">🛒 Marketplace</Link></li>
+            <li><Link to="/">Home</Link></li>
+            <li><Link to="/verify">Verify</Link></li>
+            <li><Link to="/marketplace">Marketplace</Link></li>
           </ul>
         </nav>
 

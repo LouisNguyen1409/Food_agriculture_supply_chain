@@ -599,7 +599,7 @@ async function main() {
 
         try {
           const retailerProducts = await productBatch.getRetailerProducts();
-          console.log("🏪 Products available for sale:", retailerProducts[0].length);
+          console.log("Products available for sale:", retailerProducts[0].length);
 
           if (retailerProducts[0].length > 0) {
             console.log("   - Product names:", retailerProducts[2]);
@@ -607,18 +607,18 @@ async function main() {
             console.log("   - Prices (ETH):", retailerProducts[4].map(p => ethers.formatEther(p)));
           }
         } catch (e) {
-          console.log("⚠️ getRetailerProducts error:", e.message.split('(')[0]);
+          console.log("getRetailerProducts error:", e.message.split('(')[0]);
         }
 
         try {
           const supplyChain1 = await registry.getSupplyChainHistory(1);
-          console.log("📋 Supply chain steps for Batch 1:", supplyChain1.length);
+          console.log("Supply chain steps for Batch 1:", supplyChain1.length);
 
           if (supplyChain1.length > 0) {
             console.log("   - First step:", supplyChain1[0].stakeholderRole, supplyChain1[0].action);
           }
         } catch (e) {
-          console.log("⚠️ getSupplyChainHistory error:", e.message.split('(')[0]);
+          console.log("getSupplyChainHistory error:", e.message.split('(')[0]);
         }
 
         // =============================================================

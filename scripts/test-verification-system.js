@@ -48,7 +48,7 @@ async function createMetadataHash(
 
 async function main() {
     console.log(
-        "🌟 Testing Enhanced Supply Chain System with Verification...\n"
+        "Testing Enhanced Supply Chain System with Verification...\n"
     )
 
     const contractAddresses = require("../frontend/public-portal/src/constants/contractAddresses.json");
@@ -58,7 +58,7 @@ async function main() {
         // =============================================================
         // STEP 1: DEPLOY CORE CONTRACTS
         // =============================================================
-        console.log("🚀 Deploying core contracts...")
+        console.log("Deploying core contracts...")
 
         const ProductBatch = await ethers.getContractFactory("ProductBatch")
         const productBatch = await ProductBatch.deploy()
@@ -118,7 +118,7 @@ async function main() {
         // =============================================================
         // STEP 2.5: DEPLOY STAKEHOLDER MANAGER
         // =============================================================
-        console.log("\n👥 Deploying stakeholder manager...")
+        console.log("\nDeploying stakeholder manager...")
 
         const StakeholderManager = await ethers.getContractFactory(
             "StakeholderManager"
@@ -130,7 +130,7 @@ async function main() {
         // =============================================================
         // STEP 3: SETUP ROLES AND PERMISSIONS
         // =============================================================
-        console.log("\n👥 Setting up roles and permissions...")
+        console.log("\nSetting up roles and permissions...")
 
         const setupRole = async (contract, address, role) => {
             await contract.grantRole(address, role)
@@ -153,7 +153,7 @@ async function main() {
         // =============================================================
         // STEP 3.5: SETUP STAKEHOLDER LOCATIONS
         // =============================================================
-        console.log("\n📍 Setting up stakeholder locations...")
+        console.log("\nSetting up stakeholder locations...")
         // Register stakeholders with locations
         await stakeholderManager.registerStakeholder(
             farmer1.address,
@@ -202,7 +202,7 @@ async function main() {
 
         console.log(" Stakeholder locations configured\n")
 
-        console.log("✅ Stakeholder locations configured\n");
+        console.log("Stakeholder locations configured\n");
 
         // Setup roles for all contracts
         const allContracts = [
@@ -246,7 +246,7 @@ async function main() {
         )
 
         // Farmer1 creates mangoes
-        console.log("🥭 Farmer1 creates mangoes...")
+        console.log("Farmer1 creates mangoes...")
         const batch1Tx = await productBatch
             .connect(farmer1)
             .createBatch(
@@ -278,7 +278,7 @@ async function main() {
             )
 
         // ADD PROVENANCE TRACKING with dynamic data
-        console.log("📍 Adding initial provenance records...")
+        console.log("Adding initial provenance records...")
 
         // Get farmer location dynamically
         const farmerLocation = await getStakeholderLocation(
@@ -296,7 +296,7 @@ async function main() {
         console.log(" Mangoes created with provenance tracking and QR code\n")
 
         // Farmer2 creates apples
-        console.log("🍎 Farmer2 creates apples...")
+        console.log("Farmer2 creates apples...")
         const batch2Tx = await productBatch
             .connect(farmer2)
             .createBatch(
@@ -339,7 +339,7 @@ async function main() {
         // =============================================================
         // SCENARIO 2: TRADING WORKFLOW WITH ENHANCED TRACKING
         // =============================================================
-        console.log("💰 SCENARIO 2: Trading Workflow with Enhanced Tracking\n")
+        console.log("SCENARIO 2: Trading Workflow with Enhanced Tracking\n")
 
         // List products for sale
         console.log(" Listing products for sale...")
@@ -374,7 +374,7 @@ async function main() {
         console.log(" Offer created")
 
         // Farmer accepts offer
-        console.log("\n🤝 Farmer1 accepts the offer...")
+        console.log("\nFarmer1 accepts the offer...")
         const acceptTx = await offerManager.connect(farmer1).acceptOffer(1)
         await acceptTx.wait()
         console.log(" Offer accepted")
@@ -415,7 +415,7 @@ async function main() {
         console.log(" Shipment created and ownership transferred to shipper")
 
         // Enhanced shipping process with dynamic locations
-        console.log("📍 Enhanced shipping process with provenance tracking...")
+        console.log("Enhanced shipping process with provenance tracking...")
 
         // Get shipper location dynamically
         const shipperLocation = await getStakeholderLocation(
@@ -425,14 +425,14 @@ async function main() {
 
         // Pickup with dynamic data
         await shipmentTracker.connect(shipper1).pickupShipment(1);
-        console.log("   📍 Shipper1 picked up from farmer (provenance recorded)");
+        console.log("   Shipper1 picked up from farmer (provenance recorded)");
 
         // Transit updates with dynamic locations
         await shipmentTracker.connect(shipper1).updateLocation(1, "Port - Loading for transport");
-        console.log("   📍 At port, loading cargo (provenance recorded)");
+        console.log("   At port, loading cargo (provenance recorded)");
 
         await shipmentTracker.connect(shipper1).updateLocation(1, "Highway 101 - En route to Processing");
-        console.log("   📍 En route to processing facility (provenance recorded)");
+        console.log("   En route to processing facility (provenance recorded)");
 
         // Get processor location for delivery
         const processorLocation = await getStakeholderLocation(
@@ -443,7 +443,7 @@ async function main() {
         // Delivery with dynamic data
         await shipmentTracker.connect(shipper1).updateLocation(1, "Processing Facility - Arrived");
         await shipmentTracker.connect(shipper1).markDelivered(1);
-        console.log("   📍 Delivered to processor (provenance recorded)");
+        console.log("   Delivered to processor (provenance recorded)");
 
         // Ownership transfer
         await productBatch
@@ -460,7 +460,7 @@ async function main() {
         console.log("\n SCENARIO 4: Processing with Enhanced Tracking\n")
 
         // Processor processes the mangoes
-        console.log("🔄 Processor processes the mangoes...")
+        console.log("Processor processes the mangoes...")
         await productBatch.connect(processor1).processBatch(
             1, // batchId
             "Juice Processing", // processingType
@@ -468,7 +468,7 @@ async function main() {
             80 // outputQuantity (100 -> 80 after processing)
         )
 
-        console.log("✅ Mangoes processed into juice with complete provenance tracking");
+        console.log("Mangoes processed into juice with complete provenance tracking");
 
         // =============================================================
         // SCENARIO 5: CONSUMER QR CODE VERIFICATION FLOW
@@ -497,16 +497,16 @@ async function main() {
         if (verificationResult[1]) {
             const productInfo = verificationResult[0]
             console.log(`    Product: ${productInfo.productName}`)
-            console.log(`   🌍 Origin: ${productInfo.origin}`)
+            console.log(`   Origin: ${productInfo.origin}`)
             console.log(
-                `   📅 Production Date: ${new Date(
+                `   Production Date: ${new Date(
                     Number(productInfo.productionDate) * 1000
                 ).toLocaleDateString()}`
             )
             console.log(
-                `   📍 Current Location: ${productInfo.currentLocation}`
+                `   Current Location: ${productInfo.currentLocation}`
             )
-            console.log(`   👨‍🌾 Farmer: ${productInfo.farmerInfo}`)
+            console.log(`   Farmer: ${productInfo.farmerInfo}`)
             console.log(
                 `    Supply Chain Steps: ${productInfo.supplyChainSteps}`
             )
@@ -521,25 +521,25 @@ async function main() {
         console.log(" MOBILE SUMMARY:")
         console.log(`    Authentic: ${consumerSummary.isAuthentic}`)
         console.log(`    Product: ${consumerSummary.productName}`)
-        console.log(`   🌍 Farm Origin: ${consumerSummary.farmOrigin}`)
+        console.log(`   Farm Origin: ${consumerSummary.farmOrigin}`)
         console.log(
-            `   📅 Harvest Date: ${new Date(
+            `   Harvest Date: ${new Date(
                 Number(consumerSummary.harvestDate) * 1000
             ).toLocaleDateString()}`
         )
         console.log(`    Status: ${consumerSummary.currentStatus}`)
         console.log(
-            `   ⏰ Days from Harvest: ${consumerSummary.daysFromHarvest}`
+            `   Days from Harvest: ${consumerSummary.daysFromHarvest}`
         )
         console.log(`    Total Steps: ${consumerSummary.totalSteps}`)
-        console.log(`   🍃 Quality: ${consumerSummary.qualityIndicator}`)
+        console.log(`   Quality: ${consumerSummary.qualityIndicator}`)
 
         // Get complete supply chain history (with error handling)
         console.log("\n Consumer views complete supply chain history...")
         try {
             const supplyChainHistory =
                 await publicVerification.getSupplyChainHistory(qrCode)
-            console.log("🛤 COMPLETE SUPPLY CHAIN JOURNEY:")
+            console.log("COMPLETE SUPPLY CHAIN JOURNEY:")
 
             if (supplyChainHistory && supplyChainHistory.length > 0) {
                 for (
@@ -558,7 +558,7 @@ async function main() {
                             `      Actor: ${step.actor || "Unknown Actor"}`
                         )
                         console.log(
-                            `     📍 Location: ${
+                            `     Location: ${
                                 step.location || "Unknown Location"
                             }`
                         )
@@ -584,7 +584,7 @@ async function main() {
                     `    Origin: ${provenanceSummary[1]} at ${provenanceSummary[2]}`
                 )
                 console.log(
-                    `   📍 Current: ${provenanceSummary[5]} at ${provenanceSummary[6]}`
+                    `   Current: ${provenanceSummary[5]} at ${provenanceSummary[6]}`
                 )
                 console.log(`    Total Steps: ${provenanceSummary[8]}`)
             } catch (summaryError) {
@@ -593,16 +593,16 @@ async function main() {
         }
 
         // Quick verification
-        console.log("\n⚡ Quick verification check...")
+        console.log("\nQuick verification check...")
         const quickCheck = await publicVerification.quickVerify(qrCode)
         console.log(
-            `   ⚡ Quick Result: ${quickCheck[0] ? "AUTHENTIC" : "INVALID"}`
+            `   Quick Result: ${quickCheck[0] ? "AUTHENTIC" : "INVALID"}`
         )
         console.log(`    Product: ${quickCheck[1]}`)
-        console.log(`   🌍 Origin: ${quickCheck[2]}`)
+        console.log(`   Origin: ${quickCheck[2]}`)
 
         // Multiple consumers verify
-        console.log("\n👥 Multiple consumers verify same product...")
+        console.log("\nMultiple consumers verify same product...")
         await publicVerification.connect(consumer2).verifyProduct(qrCode)
         console.log("    Consumer2 verified product")
         await publicVerification.connect(consumer3).verifyProduct(qrCode)
@@ -623,13 +623,13 @@ async function main() {
         // Verification analytics
         console.log("\n VERIFICATION ANALYTICS:")
         const verificationStats = await publicVerification.getPublicStats()
-        console.log(`   👥 Total Public Verifications: ${verificationStats[0]}`)
+        console.log(`   Total Public Verifications: ${verificationStats[0]}`)
         console.log(`    Unique Products Verified: ${verificationStats[1]}`)
-        console.log(`   📅 Today's Verifications: ${verificationStats[2]}`)
+        console.log(`   Today's Verifications: ${verificationStats[2]}`)
         console.log(`    Active Supply Chains: ${verificationStats[3]}`)
 
         // Marketplace analytics
-        console.log("\n📈 MARKETPLACE ANALYTICS:")
+        console.log("\nMARKETPLACE ANALYTICS:")
         const marketOverview = await registry.getMarketplaceOverview()
         console.log(`   Total Products: ${marketOverview[0]}`)
         console.log(`   Available Products: ${marketOverview[1]}`)
@@ -640,13 +640,13 @@ async function main() {
         )
 
         // User dashboards
-        console.log("\n👥 STAKEHOLDER DASHBOARDS:")
+        console.log("\nSTAKEHOLDER DASHBOARDS:")
 
         const farmer1Dashboard = await registry.getUserDashboard(
             farmer1.address
         )
         console.log(
-            `   👨‍🌾 Farmer1 - Products: ${farmer1Dashboard[0]}, Transactions: ${
+            `   Farmer1 - Products: ${farmer1Dashboard[0]}, Transactions: ${
                 farmer1Dashboard[2]
             }, Revenue: $${ethers.formatUnits(farmer1Dashboard[3], 18)}`
         )
@@ -663,17 +663,17 @@ async function main() {
         )
 
         // Consumer trust metrics
-        console.log("\n🤝 CONSUMER TRUST METRICS:")
+        console.log("\nCONSUMER TRUST METRICS:")
         console.log(`    QR Scan Success Rate: 100%`)
         console.log(`    Verification Success Rate: 100%`)
-        console.log(`   ⏱ Average Verification Time: <1 second`)
+        console.log(`   Average Verification Time: <1 second`)
         console.log(`    Consumer Confidence: High`)
 
         // =============================================================
         // SUCCESS SUMMARY
         // =============================================================
-        console.log("\n ENHANCED SUPPLY CHAIN SYSTEM TEST COMPLETED! 🎉")
-        console.log("\n✨ Successfully Demonstrated:")
+        console.log("\n ENHANCED SUPPLY CHAIN SYSTEM TEST COMPLETED!")
+        console.log("\nSuccessfully Demonstrated:")
         console.log("    Product Creation with QR Code Generation")
         console.log("    Complete Provenance Tracking with Dynamic Data")
         console.log("    Consumer QR Code Verification")
@@ -685,16 +685,16 @@ async function main() {
         console.log("    Multi-stakeholder Workflow")
         console.log("    Cryptographic Integrity Verification")
 
-        console.log("\n🌟 System Features:")
+        console.log("\nSystem Features:")
         console.log("    QR Code-based Consumer Interface")
         console.log("    Immutable Provenance Tracking with Rich Metadata")
-        console.log("   📍 Dynamic Location Resolution from Stakeholders")
+        console.log("   Dynamic Location Resolution from Stakeholders")
         console.log("    Real-time Analytics and Dashboards")
-        console.log("   🤝 Multi-party Trust and Transparency")
+        console.log("   Multi-party Trust and Transparency")
         console.log("    Cryptographic Verification")
-        console.log("   🌐 Public Verification Interface")
-        console.log("   📈 Advanced Market Analytics")
-        console.log("   ️ Complete Chain of Custody")
+        console.log("   Public Verification Interface")
+        console.log("   Advanced Market Analytics")
+        console.log("   Complete Chain of Custody")
 
         console.log("\n VERIFICATION SYSTEM SUMMARY:")
         console.log("    QR codes generated for all products")

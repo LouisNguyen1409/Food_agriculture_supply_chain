@@ -55,9 +55,9 @@ async function verifyShipment(trackingNumber) {
     const isProductValid = result[6];  // isProductValid
     
     if (isShipmentValid && isProductValid) {
-      console.log("✅ Shipment is fully verified!");
+      console.log("[VERIFIED] Shipment is fully verified!");
     } else {
-      console.log("❌ Shipment verification failed");
+      console.log("[FAILED] Shipment verification failed");
       if (!isProductValid) console.log("  - Product validation failed");
       if (!isShipmentValid) console.log("  - Shipment status is invalid (cancelled or undeliverable)");
     }
@@ -145,7 +145,7 @@ async function main() {
     const isShipmentValid = !(shipmentStatus === 5 || shipmentStatus === 6); // Not CANCELLED or UNABLE_TO_DELIVERED
     
     console.log(`Shipment Status: ${shipmentStatus} (${statusDescription})`);
-    console.log(`Shipment Valid: ${isShipmentValid ? '✅ Yes' : '❌ No'}`);
+    console.log(`Shipment Valid: ${isShipmentValid ? '[VALID] Yes' : '[INVALID] No'}`);
     
     // Get product details
     const productAddress = await shipment.productAddress();
@@ -171,7 +171,7 @@ async function main() {
     
     console.log(`Product Name: ${productName}`);
     console.log(`Product Stage: ${stages[productStage] || 'Unknown'} (${productStage})`);
-    console.log(`Product Valid: ${isProductValid ? '✅ Yes' : '❌ No'}`);
+    console.log(`Product Valid: ${isProductValid ? '[VALID] Yes' : '[INVALID] No'}`);
     
     // Verify stakeholder registration
     const sender = await shipment.sender();
@@ -183,7 +183,7 @@ async function main() {
     
     // Overall verification status
     const isFullyVerified = isShipmentValid && isProductValid;
-    console.log(`\nOverall Verification Status: ${isFullyVerified ? '✅ VERIFIED' : '❌ NOT VERIFIED'}`);
+    console.log(`\nOverall Verification Status: ${isFullyVerified ? '[SUCCESS] VERIFIED' : '[FAILED] NOT VERIFIED'}`);
     
   } catch (error) {
     console.error("Error:", error.message);
@@ -297,7 +297,7 @@ async function main() {
     );
     
     await tx.wait();
-    console.log(`✅ Successfully registered ${stakeholderAddress} as ${role}`);
+    console.log(`[SUCCESS] Successfully registered ${stakeholderAddress} as ${role}`);
     console.log(`Transaction hash: ${tx.hash}`);
     
   } catch (error) {

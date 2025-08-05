@@ -312,7 +312,7 @@ const Track: React.FC = () => {
                         
                         {verificationResult && (
                             <div className={`verification-badge ${verificationResult.isAuthentic ? 'authentic' : 'not-authentic'}`}>
-                                {verificationResult.isAuthentic ? ' Verified Authentic' : '❌ Verification Failed'}
+                                {verificationResult.isAuthentic ? 'Verified Authentic' : 'Verification Failed'}
                             </div>
                         )}
 

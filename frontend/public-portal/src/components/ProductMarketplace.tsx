@@ -40,7 +40,7 @@ const ProductMarketplace: React.FC = () => {
 
     setLoadingProducts(true);
     try {
-      console.log('🔍 Loading retailer products from blockchain...');
+      console.log('[INFO] Loading retailer products from blockchain...');
 
       // Use the new getRetailerProducts function with proper typing
       const result: RetailerProductsResponse = await contracts.productBatch.getRetailerProducts();
@@ -53,7 +53,7 @@ const ProductMarketplace: React.FC = () => {
       const quantities = result[5];
       const origins = result[6];
 
-      console.log('📦 Raw retailer products data:', {
+      console.log('[DEBUG] Raw retailer products data:', {
         batchIds: batchIds.map((id: ethers.BigNumberish) => Number(id)),
         retailers,
         productNames,
@@ -72,24 +72,24 @@ const ProductMarketplace: React.FC = () => {
             price: ethers.formatEther(prices[i]),
             quantity: quantity,
             origin: origins[i],
-            retailer: `🏪 ${retailers[i].slice(0,6)}...${retailers[i].slice(-4)}`,
+            retailer: `${retailers[i].slice(0,6)}...${retailers[i].slice(-4)}`,
             retailerAddress: retailers[i],
             available: true
           });
         }
       }
 
-      console.log(`✅ Loaded ${availableProducts.length} retailer products`);
+      console.log(`[SUCCESS] Loaded ${availableProducts.length} retailer products`);
       setProducts(availableProducts);
 
     } catch (err: unknown) {
       const error = err as Error;
-      console.error('❌ Error loading retailer products:', error);
+      console.error('[ERROR] Error loading retailer products:', error);
 
       // Check if the function exists, if not fallback to legacy method
       if (error.message?.includes('getRetailerProducts') ||
           error.message?.includes('not a function')) {
-        console.log('🔄 getRetailerProducts not available, using fallback method...');
+        console.log(' getRetailerProducts not available, using fallback method...');
         await loadProductsLegacy();
       } else {
         setProducts([]);
@@ -101,7 +101,7 @@ const ProductMarketplace: React.FC = () => {
   // Fallback method with proper typing
   const loadProductsLegacy = async () => {
     try {
-      console.log('🔄 Using legacy product loading method...');
+      console.log(' Using legacy product loading method...');
       const availableProducts: Product[] = [];
 
       // Try loading batches 1-20 (adjust range as needed)
@@ -135,7 +135,7 @@ const ProductMarketplace: React.FC = () => {
               price: ethers.formatEther(price),
               quantity: Number(quantity),
               origin: origin,
-              retailer: `🏪 ${retailer.slice(0,6)}...${retailer.slice(-4)}`,
+              retailer: `${retailer.slice(0,6)}...${retailer.slice(-4)}`,
               retailerAddress: retailer,
               available: true
             });
@@ -148,12 +148,12 @@ const ProductMarketplace: React.FC = () => {
         }
       }
 
-      console.log(`✅ Loaded ${availableProducts.length} products (legacy method)`);
+      console.log(`[SUCCESS] Loaded ${availableProducts.length} products (legacy method)`);
       setProducts(availableProducts);
 
     } catch (err: unknown) {
       const error = err as Error;
-      console.error('❌ Error in legacy product loading:', error);
+      console.error('[ERROR] Error in legacy product loading:', error);
       setProducts([]);
     }
   };
@@ -185,7 +185,7 @@ const ProductMarketplace: React.FC = () => {
       // Use the customer's address as the consumer
       const consumerAddress: string = await signer.getAddress();
 
-      console.log('🛒 Purchasing product:', {
+      console.log('[INFO] Purchasing product:', {
         batchId: product.batchId,
         retailer: product.retailerAddress,
         consumer: consumerAddress,
@@ -202,13 +202,13 @@ const ProductMarketplace: React.FC = () => {
         { value: priceInWei }
       );
 
-      console.log('📝 Transaction sent:', tx.hash);
+      console.log('[INFO] Transaction sent:', tx.hash);
       await tx.wait();
 
       // Step 2: Record the transaction in registry (if available)
     try {
         if (contracts.transactionRegistry) {
-          console.log('📋 Recording transaction in registry...');
+          console.log('[INFO] Recording transaction in registry...');
 
           const recordTx = await contracts.transactionRegistry.recordTransaction(
             product.batchId,           // batchId
@@ -219,19 +219,19 @@ const ProductMarketplace: React.FC = () => {
             "CONSUMER_PURCHASE"       // transaction type
           );
 
-          console.log('📋 Transaction registry record sent:', recordTx.hash);
+          console.log('[INFO] Transaction registry record sent:', recordTx.hash);
           await recordTx.wait();
-          console.log('✅ Transaction recorded in registry');
+          console.log('[SUCCESS] Transaction recorded in registry');
         } else {
-          console.log('⚠️ Transaction registry not available');
+          console.log('[WARNING] Transaction registry not available');
         }
       } catch (registryError) {
-        console.error('⚠️ Failed to record transaction in registry:', registryError);
+        console.error('[ERROR] Failed to record transaction in registry:', registryError);
         // Don't fail the whole purchase if registry recording fails
       }
       setPurchaseStatus(prev => ({ ...prev, [product.batchId]: 'success' }));
 
-      alert(`🎉 Purchase Successful!
+      alert(`Purchase Successful!
 
 Transaction Hash: ${tx.hash}
 Product: ${product.name}
@@ -254,7 +254,7 @@ You now own this product!`);
 
     } catch (err: unknown) {
       const error = err as Error;
-      console.error('❌ Purchase error:', error);
+      console.error('[ERROR] Purchase error:', error);
       setPurchaseStatus(prev => ({ ...prev, [product.batchId]: 'error' }));
 
       let errorMessage = 'Purchase failed: ';
@@ -285,10 +285,10 @@ You now own this product!`);
   if (error) {
     return (
       <div className="error-container">
-        <h3>⚠️ Connection Error</h3>
+        <h3>Connection Error</h3>
         <p>{error}</p>
         <button onClick={loadAvailableProducts} className="retry-btn">
-          🔄 Retry
+           Retry
         </button>
       </div>
     );
@@ -297,7 +297,7 @@ You now own this product!`);
   if (!isConnected) {
     return (
       <div className="connection-required">
-        <h3>🦊 Wallet Connection Required</h3>
+        <h3>Wallet Connection Required</h3>
         <p>Please connect your wallet to view and purchase products.</p>
       </div>
     );
@@ -306,13 +306,13 @@ You now own this product!`);
   return (
     <div className="marketplace-container">
       <div className="marketplace-header">
-        <h2>🛒 Retailer Products</h2>
+        <h2>Retailer Products</h2>
         <div className="header-actions">
           <span className="product-count">
             {products.length} products available
           </span>
           <button onClick={loadAvailableProducts} className="refresh-btn">
-            🔄 Refresh
+             Refresh
           </button>
         </div>
       </div>
@@ -329,31 +329,31 @@ You now own this product!`);
               <div className="product-header">
                 <h3>{product.name}</h3>
                 <div className="badges">
-                  <span className="badge verified">✅ Verified</span>
-                  <span className="badge retailer">🏪 Retailer</span>
+                  <span className="badge verified">Verified</span>
+                  <span className="badge retailer">Retailer</span>
                 </div>
               </div>
 
               <div className="product-details">
                 <p className="description">{product.description}</p>
                 <div className="detail-row">
-                  <span className="label">🌍 Origin:</span>
+                  <span className="label">Origin:</span>
                   <span className="value">{product.origin}</span>
                 </div>
                 <div className="detail-row">
-                  <span className="label">🏪 Retailer:</span>
+                  <span className="label">Retailer:</span>
                   <span className="value">{product.retailer}</span>
                 </div>
                 <div className="detail-row">
-                  <span className="label">💰 Price:</span>
+                  <span className="label">Price:</span>
                   <span className="value">{product.price} ETH</span>
                 </div>
                 <div className="detail-row">
-                  <span className="label">📦 Available:</span>
+                  <span className="label">Available:</span>
                   <span className="value">{product.quantity} units</span>
                 </div>
                 <div className="detail-row">
-                  <span className="label">🆔 Batch ID:</span>
+                  <span className="label">Batch ID:</span>
                   <span className="value">#{product.batchId}</span>
                 </div>
               </div>
@@ -366,26 +366,26 @@ You now own this product!`);
                     className="purchase-btn"
                   >
                     {purchaseStatus[product.batchId] === 'purchasing' ? (
-                      '⏳ Purchasing...'
+                      'Purchasing...'
                     ) : (
-                      `🛒 Buy Now - ${product.price} ETH`
+                      `Buy Now - ${product.price} ETH`
                     )}
                   </button>
                 ) : (
                   <button disabled className="sold-out-btn">
-                    ❌ Sold Out
+                    Sold Out
                   </button>
                 )}
 
                 {purchaseStatus[product.batchId] === 'success' && (
                   <div className="success-message">
-                    ✅ Purchase successful!
+                    Purchase successful!
                   </div>
                 )}
 
                 {purchaseStatus[product.batchId] === 'error' && (
                   <div className="error-message">
-                    ❌ Purchase failed. Try again.
+                    Purchase failed. Try again.
                   </div>
                 )}
               </div>
@@ -396,11 +396,11 @@ You now own this product!`);
 
       {products.length === 0 && !loadingProducts && (
         <div className="no-products">
-          <h3>📦 No Retailer Products Available</h3>
+          <h3>No Retailer Products Available</h3>
           <p>No products are currently available from retailers.</p>
           <p>Products must be transferred from farmers to retailers first.</p>
           <button onClick={loadAvailableProducts} className="btn-primary">
-            🔄 Refresh Products
+             Refresh Products
           </button>
         </div>
       )}
