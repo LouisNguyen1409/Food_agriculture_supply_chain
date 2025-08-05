@@ -1,13 +1,13 @@
 {
-  "StakeholderManager": "0xc3e53F4d16Ae77Db1c982e75a937B9f60FE63690",
-  "ProductBatch": "0x9E545E3C0baAB3E08CdfD552C960A1050f373042",
-  "OfferManager": "0xa82fF9aFd8f496c3d6ac40E2a0F282E47488CFc9",
-  "Registry": "0x1613beB3B2C4f22Ee086B2b38C1476A3cE7f78E8",
-  "ShipmentTracker": "0x851356ae760d987E095750cCeb3bC6014560891C",
-  "StakeholderRegistry": "0xf5059a5D33d5853360D16C683c16e67980206f36",
-  "ProvenanceTracker": "0x95401dc811bb5740090279Ba06cfA8fcF6113778",
-  "QRCodeVerifier": "0x998abeb3E57409262aE5b751f60747921B33613E",
-  "PublicVerification": "0x70e0bA845a1A0F2DA3359C97E0285013525FFC49",
-  "chainId": 31337,
-  "network": "localhost"
+  "StakeholderManager": "0x8f47647Cc45CeAfCa8098E34E46b71b93959D2e7",
+  "ProductBatch": "0x863134ae5Af38C680a4bD97f593E634ee5e98Be9",
+  "OfferManager": "0xEA3760aCd6cf304931e09f2EC490e0993B3D7F4c",
+  "Registry": "0xb060dAf20cDFe211705c7A247Ab57B55a431B9bD",
+  "ShipmentTracker": "0x0045579C27A323b2FC058335Bb2594e36f0363B4",
+  "StakeholderRegistry": "0x0FDDd8Ef844297CA3867eAF80dB2482F68FB904d",
+  "ProvenanceTracker": "0xfca65A141457f87FAFE2Aa48ce7e40E4b86C3Ceb",
+  "QRCodeVerifier": "0x342f357e5466F625B8096d0a744D2e47c74dBF55",
+  "PublicVerification": "0xC75aaaEEaf9073AC5371800403fA9d106c00577B",
+  "chainId": 80002,
+  "network": "polygon"
 }

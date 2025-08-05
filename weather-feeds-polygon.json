@@ -1,0 +1,9 @@
+{
+  "network": "polygon",
+  "chainId": 80002,
+  "temperatureFeed": "0x7C93A1543A3C222b7BD43a4EdeEfb71D46B012c4",
+  "humidityFeed": "0xf79031eC88b021224A64e05d345c9098c0a41f8A",
+  "rainfallFeed": "0xC8cA43cfa2d006839289fa3f968a111B72F45eE7",
+  "windSpeedFeed": "0x241ecA8de6d4A26e5aAf5e6816fDF7D010833159",
+  "deployedAt": "2025-08-05T12:41:59.979Z"
+}
