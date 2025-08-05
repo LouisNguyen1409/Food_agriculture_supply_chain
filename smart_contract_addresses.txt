@@ -34,29 +34,47 @@ MockWindSpeedFeed = 0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9
 
 # Core System Contracts
 StakeholderManager = 0x8f47647Cc45CeAfCa8098E34E46b71b93959D2e7
+  Verify: https://amoy.polygonscan.com/address/0x8f47647Cc45CeAfCa8098E34E46b71b93959D2e7
 ProductBatch = 0x863134ae5Af38C680a4bD97f593E634ee5e98Be9
+  Verify: https://amoy.polygonscan.com/address/0x863134ae5Af38C680a4bD97f593E634ee5e98Be9
 OfferManager = 0xEA3760aCd6cf304931e09f2EC490e0993B3D7F4c
+  Verify: https://amoy.polygonscan.com/address/0xEA3760aCd6cf304931e09f2EC490e0993B3D7F4c
 Registry = 0xb060dAf20cDFe211705c7A247Ab57B55a431B9bD
+  Verify: https://amoy.polygonscan.com/address/0xb060dAf20cDFe211705c7A247Ab57B55a431B9bD
 ShipmentTracker = 0x0045579C27A323b2FC058335Bb2594e36f0363B4
+  Verify: https://amoy.polygonscan.com/address/0x0045579C27A323b2FC058335Bb2594e36f0363B4
 StakeholderRegistry = 0x0FDDd8Ef844297CA3867eAF80dB2482F68FB904d
+  Verify: https://amoy.polygonscan.com/address/0x0FDDd8Ef844297CA3867eAF80dB2482F68FB904d
 
 # Verification System Contracts
 ProvenanceTracker = 0xfca65A141457f87FAFE2Aa48ce7e40E4b86C3Ceb
+  Verify: https://amoy.polygonscan.com/address/0xfca65A141457f87FAFE2Aa48ce7e40E4b86C3Ceb
 QRCodeVerifier = 0x342f357e5466F625B8096d0a744D2e47c74dBF55
+  Verify: https://amoy.polygonscan.com/address/0x342f357e5466F625B8096d0a744D2e47c74dBF55
 PublicVerification = 0xC75aaaEEaf9073AC5371800403fA9d106c00577B
+  Verify: https://amoy.polygonscan.com/address/0xC75aaaEEaf9073AC5371800403fA9d106c00577B
 
 # Weather Feed Contracts (Production - Real Data)
 UpdatableTemperatureFeed = 0x7C93A1543A3C222b7BD43a4EdeEfb71D46B012c4
+  Verify: https://amoy.polygonscan.com/address/0x7C93A1543A3C222b7BD43a4EdeEfb71D46B012c4
 UpdatableHumidityFeed = 0xf79031eC88b021224A64e05d345c9098c0a41f8A
+  Verify: https://amoy.polygonscan.com/address/0xf79031eC88b021224A64e05d345c9098c0a41f8A
 UpdatableRainfallFeed = 0xC8cA43cfa2d006839289fa3f968a111B72F45eE7
+  Verify: https://amoy.polygonscan.com/address/0xC8cA43cfa2d006839289fa3f968a111B72F45eE7
 UpdatableWindSpeedFeed = 0x241ecA8de6d4A26e5aAf5e6816fDF7D010833159
+  Verify: https://amoy.polygonscan.com/address/0x241ecA8de6d4A26e5aAf5e6816fDF7D010833159
 
 # Mock Oracle Contracts (Testing)
 MockV3Aggregator = 0xa7Dfd075cE31Dc39743b8E49543C7dC1b3bfA990
+  Verify: https://amoy.polygonscan.com/address/0xa7Dfd075cE31Dc39743b8E49543C7dC1b3bfA990
 MockTemperatureFeed = 0x26d5f79772b49da3b8f258970e896C5D1610394e
+  Verify: https://amoy.polygonscan.com/address/0x26d5f79772b49da3b8f258970e896C5D1610394e
 MockHumidityFeed = 0x18f84ec06921b6C2392473646ab248771BFaD21C
+  Verify: https://amoy.polygonscan.com/address/0x18f84ec06921b6C2392473646ab248771BFaD21C
 MockRainfallFeed = 0x99E751Ed304387DA63B8998e9715F41b5889Ec85
+  Verify: https://amoy.polygonscan.com/address/0x99E751Ed304387DA63B8998e9715F41b5889Ec85
 MockWindSpeedFeed = 0x582c4f597D08Ce6FE5a0c7A9AFb37c50E25D624d
+  Verify: https://amoy.polygonscan.com/address/0x582c4f597D08Ce6FE5a0c7A9AFb37c50E25D624d
 
 # === ORACLE FEEDS ===
 # ETH/USD Price Feed (Polygon): 0xF0d50568e3A7e8259E16663972b11910F89BD8e7
